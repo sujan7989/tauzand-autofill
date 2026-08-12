@@ -1,0 +1,204 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Universal Engine Fixture Test</title>
+<style>
+body{font-family:sans-serif;padding:20px;background:#0f0f13;color:#e0e0e0}
+h1{color:#9d71ea}h2{color:#7c9ee8;margin-top:24px}
+.fg{background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:16px;margin:12px 0}
+label{display:block;font-size:12px;color:#aaa;margin-bottom:4px;font-weight:600}
+input,textarea,select{width:100%;padding:8px 12px;background:#111118;border:1px solid #2a2a3a;border-radius:6px;color:#e0e0e0;font-size:14px;box-sizing:border-box;margin-bottom:4px}
+.chip{display:inline-block;background:#7c9ee8;color:#0f0f13;border-radius:12px;padding:2px 10px;font-size:12px;margin:2px}
+</style>
+</head>
+<body>
+<h1>Universal Engine Fixture Test</h1>
+<p style="color:#aaa">Load in Chrome with extension active, upload your resume, then click Autofill.</p>
+<p style="color:#f59e0b">Tests Universal Engine only - does NOT test Workday/Greenhouse/Lever/Ashby/SmartRecruiters.</p>
+
+<h2>1-4. Text / Email / Phone / Number</h2>
+<div class="fg">
+  <label for="t-fn">First Name</label><input id="t-fn" type="text" name="firstName">
+  <label for="t-ln">Last Name</label><input id="t-ln" type="text" name="lastName">
+  <label for="t-em">Email Address</label><input id="t-em" type="email" name="email">
+  <label for="t-ph">Mobile Phone</label><input id="t-ph" type="tel" name="phone">
+  <label for="t-num">Years of Experience</label><input id="t-num" type="number" name="yearsExperience" min="0">
+  <label for="t-url">LinkedIn URL</label><input id="t-url" type="url" name="linkedin">
+</div>
+
+<h2>5. Textarea (AI Questions)</h2>
+<div class="fg">
+  <label for="t-ta">Why do you want to join us?</label>
+  <textarea id="t-ta" name="coverLetter" rows="3"></textarea>
+  <label for="t-sm">Tell us about yourself</label>
+  <textarea id="t-sm" name="summary" rows="3"></textarea>
+</div>
+
+<h2>6. Native Select</h2>
+<div class="fg">
+  <label for="t-ctr">Country</label>
+  <select id="t-ctr" name="country">
+    <option value="">Select</option>
+    <option value="IN">India</option>
+    <option value="US">United States</option>
+  </select>
+  <label for="t-deg">Degree</label>
+  <select id="t-deg" name="degree">
+    <option value="">Select</option>
+    <option value="btech">Bachelor of Technology</option>
+    <option value="bsc">Bachelor of Science</option>
+    <option value="mtech">Master of Technology</option>
+  </select>
+</div>
+
+<h2>7. Phone Country Code (avoids +917 for +91)</h2>
+<div class="fg">
+  <label for="t-cc">Country Code</label>
+  <select id="t-cc" name="mobilePhone.countryCode">
+    <option value="">Select</option>
+    <option value="1">+1 United States</option>
+    <option value="44">+44 United Kingdom</option>
+    <option value="91">+91 India</option>
+    <option value="917">+917 Test (should NOT match India)</option>
+  </select>
+  <div id="t-ccr" style="font-size:11px;color:#4ade80;margin-top:4px"></div>
+</div>
+
+<h2>8. Radio Groups</h2>
+<div class="fg">
+  <label>Willing to Relocate?</label>
+  <div>
+    <input type="radio" id="r-y" name="willingToRelocate" value="yes">
+    <label for="r-y" style="display:inline;margin-left:6px">Yes</label>
+    <input type="radio" id="r-n" name="willingToRelocate" value="no" style="margin-left:20px">
+    <label for="r-n" style="display:inline;margin-left:6px">No</label>
+  </div>
+  <br>
+  <label>Notice Period</label>
+  <div>
+    <input type="radio" id="np0" name="noticePeriod" value="immediate">
+    <label for="np0" style="display:inline;margin-left:6px">Immediate Joiner</label>
+    <input type="radio" id="np30" name="noticePeriod" value="30days" style="margin-left:20px">
+    <label for="np30" style="display:inline;margin-left:6px">30 Days</label>
+  </div>
+</div>
+
+<h2>9. Checkbox</h2>
+<div class="fg">
+  <input type="checkbox" id="t-cb" name="candidateConsent">
+  <label for="t-cb" style="display:inline;margin-left:8px">I agree to Privacy Policy</label>
+</div>
+
+<h2>10. Date Picker</h2>
+<div class="fg">
+  <label for="t-dt">Date of Birth (native date input)</label>
+  <input id="t-dt" type="date" name="dateOfBirth">
+  <label for="t-dtx">Graduation Year (text, expects DD/MM/YYYY)</label>
+  <input id="t-dtx" type="text" name="graduationDate" placeholder="DD/MM/YYYY">
+</div>
+
+<h2>11. Custom Dropdown (React/Angular-style)</h2>
+<div class="fg">
+  <label>Preferred Location</label>
+  <div id="cdd" role="combobox" aria-haspopup="listbox" aria-label="Preferred Location"
+       style="background:#111118;border:1px solid #2a2a3a;border-radius:6px;padding:8px;cursor:pointer;color:#e0e0e0;position:relative">
+    <span id="cddv">Select a location...</span>
+    <div id="cddo" role="listbox"
+         style="display:none;position:absolute;top:100%;left:0;right:0;background:#1a1a24;border:1px solid #2a2a3a;border-radius:6px;z-index:100">
+      <div role="option" style="padding:8px;cursor:pointer" data-val="hyderabad">Hyderabad</div>
+      <div role="option" style="padding:8px;cursor:pointer" data-val="bangalore">Bangalore</div>
+      <div role="option" style="padding:8px;cursor:pointer" data-val="kurnool">Kurnool</div>
+    </div>
+  </div>
+</div>
+
+<h2>12. Skills / Tags Input</h2>
+<div class="fg">
+  <label>Skills</label>
+  <div id="chips" style="min-height:32px;margin-bottom:6px"></div>
+  <input id="t-sk" type="text" name="skills" placeholder="Add new skill">
+  <div id="sksugg" style="display:none;background:#1a1a24;border:1px solid #2a2a3a;border-radius:6px"></div>
+</div>
+
+<h2>13. Multi-Select (native)</h2>
+<div class="fg">
+  <label for="t-ms">Programming Languages</label>
+  <select id="t-ms" name="programmingLanguages" multiple size="4">
+    <option value="python">Python</option>
+    <option value="javascript">JavaScript</option>
+    <option value="java">Java</option>
+    <option value="typescript">TypeScript</option>
+    <option value="react">React</option>
+  </select>
+</div>
+
+<h2>14. ContentEditable</h2>
+<div class="fg">
+  <label>Cover Letter (contenteditable rich text)</label>
+  <div id="t-ce" contenteditable="true" aria-label="Cover Letter"
+       style="min-height:80px;background:#111118;border:1px solid #2a2a3a;border-radius:6px;padding:10px;outline:none;color:#e0e0e0">
+    Type your cover letter here...
+  </div>
+</div>
+
+<h2>15. Dynamic Field (appears after 2s - tests multi-step observer)</h2>
+<div class="fg" id="dynsec">
+  <p style="color:#aaa">Dynamic field loading in 2 seconds...</p>
+</div>
+
+<h2>16. Shadow DOM</h2>
+<div class="fg">
+  <label>Shadow DOM - GitHub URL</label>
+  <div id="shhost"></div>
+</div>
+
+<h2>17. Number</h2>
+<div class="fg">
+  <label for="t-av">Available To Join (days)</label>
+  <input id="t-av" type="number" name="standardFields.availability.answer" min="0">
+</div>
+
+<script>
+document.getElementById('cdd').addEventListener('click',function(){
+  var o=document.getElementById('cddo');
+  o.style.display=o.style.display==='block'?'none':'block';
+});
+document.querySelectorAll('#cddo [role=option]').forEach(function(o){
+  o.addEventListener('click',function(){
+    document.getElementById('cddv').textContent=o.textContent;
+    document.getElementById('cddo').style.display='none';
+  });
+});
+var SKILLS=['Python','Python Programming','Java','JavaScript','TypeScript','React','React.js','Node.js','Django','Flask','SQL','Git','HTML5','CSS3'];
+document.getElementById('t-sk').addEventListener('input',function(){
+  var v=this.value.toLowerCase(),sugg=document.getElementById('sksugg');
+  if(!v){sugg.style.display='none';return;}
+  var m=SKILLS.filter(function(s){return s.toLowerCase().startsWith(v);}).slice(0,5);
+  if(!m.length){sugg.style.display='none';return;}
+  sugg.innerHTML=m.map(function(s){return '<div style="padding:8px;cursor:pointer" role="option">'+s+'</div>';}).join('');
+  sugg.style.display='block';
+  sugg.querySelectorAll('div').forEach(function(d){
+    d.addEventListener('click',function(){
+      var chip=document.createElement('span');chip.className='chip';chip.textContent=d.textContent;
+      document.getElementById('chips').appendChild(chip);
+      document.getElementById('t-sk').value='';sugg.style.display='none';
+    });
+  });
+});
+document.getElementById('t-sk').addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&this.value.trim()){
+    var chip=document.createElement('span');chip.className='chip';chip.textContent=this.value.trim();
+    document.getElementById('chips').appendChild(chip);this.value='';
+    document.getElementById('sksugg').style.display='none';e.preventDefault();
+  }
+});
+setTimeout(function(){
+  document.getElementById('dynsec').innerHTML='<label for="dynf">Salary Expectation (dynamic field)</label><input id="dynf" type="number" name="expectedSalary.amount" placeholder="Enter amount">';
+},2000);
+var sh=document.getElementById('shhost'),sr=sh.attachShadow({mode:'open'});
+sr.innerHTML='<input id="shi" type="url" aria-label="GitHub URL" placeholder="https://github.com/..." style="width:100%;padding:8px;background:#111;border:1px solid #444;border-radius:6px;color:#fff">';
+document.getElementById('t-cc').addEventListener('change',function(){
+  document.getElementById('t-ccr').textContent='Selected: '+this.value+' (India should be 91 NOT 917)';
+});
+</script>
+</body>
+</html>
