@@ -28,6 +28,7 @@
                 "content/highlighter.js",
                 "content/observer.js",
                 "content/shared.js",
+                "content/interaction-strategies.js",
                 "content/autoFill-universal.js",
                 "content/verifier.js"
             ],

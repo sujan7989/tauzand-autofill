@@ -820,7 +820,150 @@ async function uvFill(profile) {
         console.log('[UV] Post-pass: Immediate Joiner radio clicked');
     }
 
+    // ── Phase 6: Repair loop on required fields still empty ──
+    await uvDelay(500); // wait for any React re-renders
+    var failedFields = getAllElements(document).filter(function(el) {
+        var r = el.getBoundingClientRect();
+        if (r.width === 0 || el.disabled || el.readOnly) return false;
+        if (uv.filled.has(el)) return false;
+        var type6 = (el.type||'').toLowerCase();
+        if (['file','submit','button','image','hidden','reset','search','checkbox','radio'].includes(type6)) return false;
+        if (el.required && !(el.value||'').trim()) return true;
+        return false;
+    });
+
+    if (failedFields.length > 0) {
+        console.log('[UV] Repair loop: ' + failedFields.length + ' required fields still empty');
+        for (var ri = 0; ri < Math.min(failedFields.length, 5); ri++) {
+            var rEl = failedFields[ri];
+            var rLabel = getLabel(rEl);
+            if (!rLabel) continue;
+            var rVal = await resolveValue(rLabel, (rEl.type||'text'), rEl.name||'', rEl.id||'', p);
+            if (!rVal) continue;
+            for (var attempt = 1; attempt <= 3; attempt++) {
+                var repaired = await repairField(rEl, rLabel, rVal, p, attempt);
+                if (repaired) { filled++; uv.filled.add(rEl); break; }
+            }
+        }
+    }
+
     return filled;
+}
+
+// ─────────────────────────────────────────────────────────────
+// PHASE 6a — BOUNDED REPAIR LOOP
+// ─────────────────────────────────────────────────────────────
+async function repairField(el, label, val, profile, attempt) {
+    if (!el || attempt > 3) return false;
+    var tag  = el.tagName.toUpperCase();
+    var type = (el.type || 'text').toLowerCase();
+
+    console.log('[UV] Repair attempt ' + attempt + ' for "' + label + '"');
+
+    // Re-check element is still in DOM
+    if (!document.contains(el) && !(el.getRootNode && el.getRootNode().host)) {
+        var allEls = getAllElements(document);
+        var found = allEls.find(function(e) {
+            return getLabel(e).toLowerCase() === label.toLowerCase();
+        });
+        if (!found) return false;
+        el = found;
+    }
+
+    if (attempt === 1) {
+        // Strategy 1: click + focus + type char by char simulation
+        el.click(); el.focus();
+        await uvDelay(100);
+        el.value = '';
+        var v1 = String(val);
+        for (var ci = 0; ci < v1.length; ci++) {
+            el.dispatchEvent(new KeyboardEvent('keydown',  {key: v1[ci], bubbles: true}));
+            el.dispatchEvent(new KeyboardEvent('keypress', {key: v1[ci], bubbles: true}));
+            var proto1 = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+            if (proto1 && proto1.set) proto1.set.call(el, el.value + v1[ci]);
+            else el.value = el.value + v1[ci];
+            el.dispatchEvent(new KeyboardEvent('keyup', {key: v1[ci], bubbles: true}));
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+        }
+        el.dispatchEvent(new Event('change', {bubbles: true}));
+        el.dispatchEvent(new Event('blur',   {bubbles: true}));
+    } else if (attempt === 2) {
+        // Strategy 2: execCommand insertText
+        el.click(); el.focus();
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, String(val));
+        el.dispatchEvent(new Event('change', {bubbles: true}));
+    } else {
+        // Strategy 3: direct assignment with all framework events
+        el.value = String(val);
+        ['input', 'change', 'blur'].forEach(function(ev) {
+            el.dispatchEvent(new Event(ev, {bubbles: true, composed: true}));
+        });
+        // Also try CustomEvent for Angular/Lit
+        el.dispatchEvent(new CustomEvent('spl-change', {
+            bubbles: true, composed: true, detail: {value: String(val)}
+        }));
+    }
+
+    await uvDelay(200);
+
+    var verifyOk = (el.value || '').trim() !== '' && el.getAttribute('aria-invalid') !== 'true';
+    if (verifyOk) {
+        console.log('[UV] Repair SUCCESS attempt ' + attempt + ' for "' + label + '"');
+    }
+    return verifyOk;
+}
+
+// ─────────────────────────────────────────────────────────────
+// PHASE 6b — MULTI-STEP / DYNAMIC PAGE OBSERVER
+// ─────────────────────────────────────────────────────────────
+var uvObserver = null;
+var uvObserverDebounce = null;
+
+function setupMultiStepObserver(profile) {
+    if (uvObserver) return; // already active
+
+    var lastFieldCount = 0;
+
+    uvObserver = new MutationObserver(function(mutations) {
+        clearTimeout(uvObserverDebounce);
+        uvObserverDebounce = setTimeout(function() {
+            if (uv.busy) return; // don't scan while filling
+
+            var allEls = getAllElements(document);
+            var visible = allEls.filter(function(el) {
+                var r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0 && !el.disabled && !el.readOnly;
+            });
+
+            var newCount = visible.filter(function(el) {
+                return !uv.filled.has(el);
+            }).length;
+
+            if (newCount > 0 && newCount !== lastFieldCount) {
+                lastFieldCount = newCount;
+                console.log('[UV] Multi-step: ' + newCount + ' new fields detected, auto-filling');
+                chrome.storage.local.get(['userProfile'], function(r) {
+                    var p = r && r.userProfile;
+                    if (p) {
+                        uvFill(p).then(function(n) {
+                            if (n > 0) console.log('[UV] Multi-step filled ' + n + ' new fields');
+                        }).catch(function() {});
+                    }
+                });
+            }
+        }, 1500);
+    });
+
+    if (profile) {
+        uvObserver.observe(document.body, {childList: true, subtree: true});
+        console.log('[UV] Multi-step observer active');
+    }
+}
+
+function teardownMultiStepObserver() {
+    if (uvObserver) { uvObserver.disconnect(); uvObserver = null; }
+    clearTimeout(uvObserverDebounce);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -842,6 +985,8 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
                 chrome.storage.local.set({fieldsFilled:n, autofillStatus:'done'}).catch(function(){});
                 try { window.showToast('AutoFill: '+n+' field(s) filled.','success'); } catch(e) {}
                 try { sendResponse({success:true,filled:n,result:{filledCount:n,skippedCount:0}}); } catch(e) {}
+                // Phase 6d: activate multi-step observer after initial fill
+                try { setupMultiStepObserver(p); } catch(e) {}
             }).catch(function(err) {
                 uv.busy = false;
                 console.error('[UV] Error:', err.message);

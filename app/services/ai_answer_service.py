@@ -1,4 +1,4 @@
-"""
+﻿"""
 AI Answer Service
 Generates context-aware answers for open-ended job application questions.
 Uses NVIDIA NIM (Mistral) when available, falls back to template-based answers.
@@ -338,46 +338,63 @@ You will receive a question, the candidate's full resume profile, and context ab
 RULES - follow these strictly:
 1. ALWAYS write in first person ("I", "my", "me") - never "the candidate"
 2. Use ONLY information from the profile provided - never invent facts
-3. For questions where resume data applies (skills, projects, experience, education) - use it specifically
-4. For questions where resume data does NOT apply (how you heard, referral, etc.) - give a natural honest answer
-5. Be concise: 1-3 sentences for short fields, 2-4 sentences for open fields
-6. Never write more than 150 words unless it is explicitly a cover letter question
-7. Sound like a real human, not a robot - no buzzword overload
-8. Do NOT add labels, headers, or explanations - return ONLY the answer text
-9. Use the company name naturally if provided
+3. GROUNDING RULE: Do NOT invent companies, dates, certifications, skills, technologies, or personal facts that are not explicitly present in the profile section below.
+4. For questions where resume data applies (skills, projects, experience, education) - use it specifically and precisely
+5. For questions where resume data does NOT apply (how you heard, referral, etc.) - give a natural honest answer
+6. Be concise: 2-4 sentences for most question types; cover letters may be longer (up to 200 words)
+7. Never write more than 150 words unless it is explicitly a cover letter question
+8. Sound like a real human, not a robot - no buzzword overload
+9. Do NOT add labels, headers, or explanations - return ONLY the answer text
+10. Use the company name and job title naturally when they are provided
 
 SPECIAL HANDLING:
-- "How did you hear / find out" ##' Say you found it on LinkedIn/job board/Google while looking for relevant roles
-- "Current CTC / salary" ##' If fresher (no paid experience): say "I am a fresher, this would be my first role"  
+- "How did you hear / find out" -> Say you found it on LinkedIn/job board/Google while looking for relevant roles
+- "Current CTC / salary" -> If fresher (no paid experience): say "I am a fresher, this would be my first role"
                             If experienced: mention it was market-competitive / give a range if possible
-- "Expected CTC / salary" ##' Be honest about expectations being open and negotiable based on role scope
-- "Notice period / when can you join" ##' Base on actual experience status (fresher = immediately, experienced = per notice)
-- "Willing to relocate" ##' Answer based on profile city vs job location context
-- "Why this company" ##' Reference the company name and something genuine about the role/technology
+- "Expected CTC / salary" -> Be honest about expectations being open and negotiable based on role scope
+- "Notice period / when can you join" -> Base on actual experience status (fresher = immediately, experienced = per notice)
+- "Willing to relocate" -> Answer based on profile city vs job location context
+- "Why this company" -> Reference the company name and something genuine about the role/technology stack
+- "About yourself / introduction" -> Lead with name, key skills, and years of experience; 2-3 sentences max
+- "Describe experience / project" -> Cite actual job titles, companies, and project descriptions from the profile only
 """
 
-AI_USER_TEMPLATE = """QUESTION: {question}
-QUESTION TYPE: {qtype}
-COMPANY: {company}
-JOB TITLE: {job_title}
-JOB DESCRIPTION EXCERPT: {jd}
-
-CANDIDATE RESUME:
-Name: {name}
-Summary: {summary}
-Skills: {skills}
+AI_USER_TEMPLATE = """=== CANDIDATE PROFILE SUMMARY ===
+Name:             {name}
 Total Experience: {experience}
+Top Skills:       {skills}
+Current/Latest Role: {latest_role}
+Education:        {education_summary}
+
+=== ROLE CONTEXT ===
+Company:   {company}
+Job Title: {job_title}
+JD Excerpt:{jd}
+
+=== QUESTION TO ANSWER ===
+Question:      {question}
+Question Type: {qtype}
+
+=== FULL RESUME DETAIL (use only facts explicitly stated here) ===
+Summary:
+{summary}
+
 Work History:
 {work_history}
-Education:
+
+Education (full):
 {education}
+
 Certifications: {certifications}
-Projects: {projects}
+
+Projects:
+{projects}
+
 LinkedIn: {linkedin}
-GitHub: {github}
+GitHub:   {github}
 
-Write a direct, genuine answer to the question using only the candidate's actual background above."""
-
+Write a direct, genuine 2-4 sentence answer using only the candidate's actual background above.
+Do not invent any facts. Return only the answer text with no labels or headers."""
 
 class AIAnswerService:
     """Generates AI-powered answers for open-ended job application questions."""
@@ -514,6 +531,21 @@ class AIAnswerService:
         # Get question type for richer context in prompt
         qtype = detect_question_type(question)
 
+        # Build concise latest_role and education_summary for the profile summary block
+        latest_role = 'Not provided'
+        if exp_list and isinstance(exp_list, list) and len(exp_list) > 0:
+            ex0 = exp_list[0]
+            title0   = ex0.get('title') or ex0.get('job_title') or '?'
+            company0 = ex0.get('company') or '?'
+            latest_role = f"{title0} at {company0}"
+
+        education_summary = 'Not provided'
+        if edu_list and isinstance(edu_list, list) and len(edu_list) > 0:
+            e0 = edu_list[0]
+            deg0 = e0.get('degree') or '?'
+            inst0 = e0.get('institution') or e0.get('school') or '?'
+            education_summary = f"{deg0} — {inst0}"
+
         user_prompt = AI_USER_TEMPLATE.format(
             question=question,
             qtype=qtype,
@@ -521,6 +553,8 @@ class AIAnswerService:
             job_title=context.get('job_title', 'this position'),
             jd=jd_str,
             name=profile_summary['name'],
+            latest_role=latest_role,
+            education_summary=education_summary,
             summary=(profile_summary.get('summary') or 'Not provided')[:500],
             skills=profile_summary['skills'] or 'Not provided',
             experience=profile_summary['experience'] or 'Fresher (no paid experience yet)',
