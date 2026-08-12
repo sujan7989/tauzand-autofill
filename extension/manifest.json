@@ -1,0 +1,142 @@
+{
+    "manifest_version": 3,
+    "name": "Tauzand AutoFill Assistant",
+    "description": "Intelligent form filling extension for job applications",
+    "version": "1.0.0",
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_icon": {
+            "16": "assets/icons/icon16.png",
+            "32": "assets/icons/icon32.png",
+            "48": "assets/icons/icon48.png",
+            "128": "assets/icons/icon128.png"
+        }
+    },
+    "background": {
+        "service_worker": "background/background.js",
+        "type": "module"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "content/detectForms.js",
+                "content/extractHTML.js",
+                "content/messaging.js",
+                "content/highlighter.js",
+                "content/observer.js",
+                "content/shared.js",
+                "content/autoFill-universal.js",
+                "content/verifier.js"
+            ],
+            "css": [
+                "content/styles.css"
+            ],
+            "run_at": "document_idle",
+            "all_frames": true
+        },
+        {
+            "matches": [
+                "*://*.myworkdayjobs.com/*",
+                "*://*.workday.com/*"
+            ],
+            "js": [
+                "content/autoFill-workday.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": true
+        },
+        {
+            "matches": [
+                "*://boards.greenhouse.io/*",
+                "*://*.greenhouse.io/*"
+            ],
+            "js": [
+                "content/autoFill-greenhouse.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": true
+        },
+        {
+            "matches": [
+                "*://jobs.lever.co/*",
+                "*://*.lever.co/*"
+            ],
+            "js": [
+                "content/autoFill-lever.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": true
+        },
+        {
+            "matches": [
+                "*://*.ashbyhq.com/*"
+            ],
+            "js": [
+                "content/autoFill-ashby.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": true
+        },
+        {
+            "matches": [
+                "*://*.smartrecruiters.com/*",
+                "*://jobs.smartrecruiters.com/*"
+            ],
+            "js": [
+                "content/autoFill-smartrecruiters.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": true
+        },
+        {
+            "matches": [
+                "*://docs.google.com/forms/*"
+            ],
+            "js": [
+                "content/autoFill-googleforms.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": true
+        }
+    ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'"
+    },
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "content/*.js",
+                "content/*.css",
+                "assets/*"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "permissions": [
+        "alarms",
+        "storage",
+        "scripting",
+        "tabs",
+        "activeTab",
+        "webNavigation"
+    ],
+    "host_permissions": [
+        "http://*/*",
+        "https://*/*"
+    ],
+    "options_ui": {
+        "page": "options.html",
+        "open_in_tab": false
+    },
+    "icons": {
+        "16": "assets/icons/icon16.png",
+        "32": "assets/icons/icon32.png",
+        "48": "assets/icons/icon48.png",
+        "128": "assets/icons/icon128.png"
+    }
+}
