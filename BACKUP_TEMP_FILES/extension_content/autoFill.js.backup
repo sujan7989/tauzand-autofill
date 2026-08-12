@@ -1,0 +1,1501 @@
+﻿// autoFill.js — Tauzand AutoFill Assistant
+// Chrome Extension Content Script
+// Reconstructed from fragment + specification
+
+if (window.__autoFillInitialized) {
+    console.log('[autoFill] Already initialized, skipping');
+} else {
+window.__autoFillInitialized = true;
+
+// ══════════════════════════════════════════════════════════════════
+// 1. CONFIG AND STATE
+// ══════════════════════════════════════════════════════════════════
+var AUTO_FILL_CONFIG = {
+    MIN_CONFIDENCE_THRESHOLD: 0.70,
+    DELAY_BETWEEN_FIELDS: 80,
+    AI_QUESTIONS_ENABLED: true,
+    BACKEND_URL: 'http://localhost:5000'
+};
+
+var fillState = {
+    filledElements: new Set(),
+    isFilling: false,
+    backendUrl: 'http://localhost:5000',
+    userProfile: null,
+    platform: null
+};
+
+// ══════════════════════════════════════════════════════════════════
+// 2. PLATFORM DETECTION
+// ══════════════════════════════════════════════════════════════════
+function detectPlatform() {
+    var host = location.hostname.toLowerCase();
+    if (host.includes('myworkdayjobs') || host.includes('workday')) return 'workday';
+    if (host.includes('greenhouse') || host.includes('boards.greenhouse')) return 'greenhouse';
+    if (host.includes('linkedin')) return 'linkedin';
+    if (host.includes('smartrecruiters') || host.includes('jobs.smartrecruiters')) return 'smartrecruiters';
+    if (host.includes('indeed')) return 'indeed';
+    if (host.includes('lever')) return 'lever';
+    if (host.includes('ashbyhq') || host.includes('ashby')) return 'ashby';
+    if (host.includes('google') && location.pathname.includes('/forms')) return 'googleforms';
+    return 'generic';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 3. AI QUESTION PATTERNS AND getAIAnswer
+// ══════════════════════════════════════════════════════════════════
+var AI_QUESTION_PATTERNS = [
+    /cover letter/i,
+    /why do you want/i,
+    /why are you interest/i,
+    /tell us about yourself/i,
+    /describe your experience/i,
+    /what are your strength/i,
+    /what are your weakness/i,
+    /where do you see yourself/i,
+    /what motivates you/i,
+    /why should we hire/i,
+    /describe a challenge/i,
+    /describe a situation/i,
+    /how do you handle/i,
+    /what is your greatest/i,
+    /tell me about a time/i,
+    /what are your career goal/i,
+    /what do you know about/i,
+    /how did you hear about/i,
+    /what salary/i,
+    /salary expectation/i,
+    /desired salary/i,
+    /expected compensation/i,
+    /notice period/i,
+    /available to start/i,
+    /earliest start/i,
+    /willing to relocate/i,
+    /open to relocation/i,
+    /additional information/i,
+    /anything else/i,
+    /is there anything/i,
+    /please describe/i,
+    /please explain/i,
+    /briefly describe/i,
+    /share your/i,
+    /how would you/i,
+    /what experience do you have/i,
+    /how many years/i,
+    /years of experience/i,
+    /describe your background/i,
+    /relevant experience/i,
+    /passion for/i,
+    /what drives you/i,
+    /what excites you/i
+];
+
+function isAIQuestion(labelText) {
+    if (!labelText) return false;
+    var lc = labelText.toLowerCase();
+    return AI_QUESTION_PATTERNS.some(function(p) { return p.test(lc); });
+}
+
+async function getAIAnswer(question, profile) {
+    try {
+        var res = await fetch(AUTO_FILL_CONFIG.BACKEND_URL + '/api/ai-answer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: question, profile: profile })
+        });
+        if (!res.ok) return null;
+        var data = await res.json();
+        return data.answer || data.response || null;
+    } catch (e) {
+        console.log('[AutoFill] AI answer fetch failed:', e.message);
+        return null;
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 4. CORE FILL HELPERS
+// ══════════════════════════════════════════════════════════════════
+
+function delay(ms) {
+    return new Promise(function(resolve) { setTimeout(resolve, ms); });
+}
+
+function fillField(el, value, type) {
+    try {
+        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+        if (!nativeSetter) nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+        var setter = nativeSetter && nativeSetter.set;
+        if (setter) {
+            setter.call(el, value);
+        } else {
+            el.value = value;
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+        el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true }));
+        return true;
+    } catch (e) {
+        console.log('[AutoFill] fillField error:', e.message);
+        return false;
+    }
+}
+
+function fillSelect(el, value) {
+    try {
+        // Try by value first
+        for (var i = 0; i < el.options.length; i++) {
+            if (el.options[i].value && el.options[i].value.toLowerCase() === value.toLowerCase()) {
+                el.selectedIndex = i;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            }
+        }
+        // Try by text
+        for (var j = 0; j < el.options.length; j++) {
+            if (el.options[j].text && el.options[j].text.toLowerCase().includes(value.toLowerCase())) {
+                el.selectedIndex = j;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            }
+        }
+        return false;
+    } catch (e) {
+        return false;
+    }
+}
+
+function fillSelectByLabel(el, value) {
+    try {
+        var lc = value.toLowerCase();
+        for (var i = 0; i < el.options.length; i++) {
+            var optText = (el.options[i].text || '').toLowerCase();
+            var optVal = (el.options[i].value || '').toLowerCase();
+            if (optText === lc || optVal === lc) {
+                el.selectedIndex = i;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            }
+        }
+        for (var j = 0; j < el.options.length; j++) {
+            var txt = (el.options[j].text || '').toLowerCase();
+            if (txt.includes(lc) || lc.includes(txt)) {
+                el.selectedIndex = j;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            }
+        }
+        return false;
+    } catch (e) {
+        return false;
+    }
+}
+
+function fillCheckbox(el, value) {
+    try {
+        var shouldCheck = value === true || value === 'true' || value === '1' ||
+                          (typeof value === 'string' && /^(yes|on|checked|true)$/i.test(value.trim()));
+        if (el.checked !== shouldCheck) {
+            el.click();
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function fillRadio(el, value) {
+    try {
+        var elVal = (el.value || '').toLowerCase();
+        var elLbl = (getLabelForElement(el) || '').toLowerCase();
+        var val = (value || '').toLowerCase();
+        if (elVal === val || elLbl === val || elVal.includes(val) || val.includes(elVal)) {
+            if (!el.checked) {
+                el.click();
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            return true;
+        }
+        return false;
+    } catch (e) {
+        return false;
+    }
+}
+
+function fillAnyField(el, value) {
+    if (!el || value === null || value === undefined) return false;
+    var tag = el.tagName ? el.tagName.toLowerCase() : '';
+    var type = (el.type || '').toLowerCase();
+    if (tag === 'select') return fillSelect(el, String(value));
+    if (tag === 'input' && type === 'checkbox') return fillCheckbox(el, value);
+    if (tag === 'input' && type === 'radio') return fillRadio(el, String(value));
+    if (tag === 'input' || tag === 'textarea') return fillField(el, String(value));
+    // contenteditable
+    if (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === '') {
+        el.focus();
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, String(value));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    }
+    return false;
+}
+
+function isFieldFillable(el) {
+    if (!el) return false;
+    try {
+        var rect = el.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return false;
+    } catch (e) { return false; }
+    if (el.disabled || el.readOnly) return false;
+    var style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    return true;
+}
+
+function getLabelForElement(el) {
+    if (!el) return '';
+    // Check for associated label via id
+    if (el.id) {
+        var lbl = document.querySelector('label[for="' + el.id + '"]');
+        if (lbl) return lbl.textContent.trim();
+    }
+    // Check parent label
+    var parent = el.parentElement;
+    while (parent && parent !== document.body) {
+        if (parent.tagName && parent.tagName.toLowerCase() === 'label') {
+            return parent.textContent.trim();
+        }
+        parent = parent.parentElement;
+    }
+    // aria-label
+    if (el.getAttribute('aria-label')) return el.getAttribute('aria-label').trim();
+    // aria-labelledby
+    var labelledBy = el.getAttribute('aria-labelledby');
+    if (labelledBy) {
+        var lblEl = document.getElementById(labelledBy);
+        if (lblEl) return lblEl.textContent.trim();
+    }
+    // placeholder
+    if (el.placeholder) return el.placeholder.trim();
+    // name attribute
+    if (el.name) return el.name.trim();
+    return '';
+}
+
+function showToast(msg, type) {
+    try {
+        var existing = document.getElementById('__autofill_toast__');
+        if (existing) existing.remove();
+        var toast = document.createElement('div');
+        toast.id = '__autofill_toast__';
+        toast.textContent = msg;
+        var bg = type === 'error' ? '#c0392b' : type === 'warn' ? '#e67e22' : '#27ae60';
+        toast.style.cssText = [
+            'position:fixed', 'bottom:24px', 'right:24px', 'z-index:2147483647',
+            'background:' + bg, 'color:#fff', 'padding:12px 20px',
+            'border-radius:8px', 'font-size:14px', 'font-family:sans-serif',
+            'box-shadow:0 4px 16px rgba(0,0,0,0.25)', 'max-width:380px',
+            'line-height:1.4', 'pointer-events:none'
+        ].join(';');
+        document.body.appendChild(toast);
+        setTimeout(function() { if (toast.parentNode) toast.remove(); }, 4000);
+    } catch (e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 5a. GREENHOUSE FILL
+// ══════════════════════════════════════════════════════════════════
+async function fillGreenhouse(profile) {
+    console.log('[AutoFill] fillGreenhouse start');
+    var p = profile || {};
+    var filled = 0;
+
+    var firstName  = (p.first_name) || (p.personal && p.personal.first_name) || '';
+    var lastName   = (p.last_name)  || (p.personal && p.personal.last_name)  || '';
+    var email      = (p.contact && p.contact.email)   || p.email   || '';
+    var phoneRaw   = (p.contact && p.contact.phone)   || p.phone   || '';
+    var city       = ((p.contact && p.contact.city)   || p.city    || '').split(',')[0].trim();
+    var linkedin   = (p.social && p.social.linkedin)  || p.linkedin  || '';
+    var portfolio  = (p.social && p.social.portfolio) || p.portfolio || '';
+    var github     = (p.social && p.social.github)    || p.github    || '';
+    var relocation = (p.professional && p.professional.willing_to_relocate) || 'Yes';
+    var workAuth   = (p.professional && p.professional.work_authorization)  || 'Yes';
+
+    // Strip country code: +917989168768 → 7989168768
+    var phone = phoneRaw;
+    if (phoneRaw.startsWith('+')) {
+        var digits = phoneRaw.slice(1);
+        if (digits.length === 12) phone = digits.slice(2);
+        else if (digits.length === 11) phone = digits.slice(1);
+        else if (digits.length === 13) phone = digits.slice(3);
+        else phone = digits.replace(/^\d{1,3}/, '') || digits;
+    }
+    // Normalise LinkedIn URL
+    if (linkedin && !linkedin.startsWith('http')) {
+        linkedin = 'https://www.linkedin.com/in/' + linkedin.replace(/.*linkedin\.com\/in\//i, '');
+    }
+
+    // ── 1. Text inputs by ID (confirmed from console audit) ─────────────
+    // IDs confirmed: first_name, last_name, preferred_name, email, phone,
+    //   candidate-location (city), question_67865611 (LinkedIn),
+    //   question_67865613 (how-did-you-hear), question_67865614 (specify)
+    var ghIdMap = [
+        { id: 'first_name',         v: firstName   },
+        { id: 'last_name',          v: lastName    },
+        { id: 'preferred_name',     v: firstName   },
+        { id: 'email',              v: email       },
+        { id: 'phone',              v: phone       }
+    ];
+    // Fill by exact ID first
+    for (var ghi = 0; ghi < ghIdMap.length; ghi++) {
+        var ghm = ghIdMap[ghi];
+        if (!ghm.v) continue;
+        var ghEl = document.getElementById(ghm.id);
+        if (ghEl && isFieldFillable(ghEl) && !fillState.filledElements.has(ghEl)) {
+            if (fillField(ghEl, ghm.v)) { fillState.filledElements.add(ghEl); filled++; console.log('[GH] id fill:', ghm.id, '=', ghm.v.substring(0,40)); }
+        }
+    }
+
+    // LinkedIn: id=question_67865611 OR label "LinkedIn Profile"
+    var liEl = document.getElementById('question_67865611')
+            || Array.from(document.querySelectorAll('input[type="text"]')).find(function(e) {
+                   return /linkedin/i.test(getLabelForElement(e));
+               });
+    if (liEl && isFieldFillable(liEl) && !fillState.filledElements.has(liEl) && linkedin) {
+        if (fillField(liEl, linkedin)) { fillState.filledElements.add(liEl); filled++; console.log('[GH] linkedin filled'); }
+    }
+
+    // How did you hear: id=question_67865613 OR label "How did you initially hear"
+    var hdyhEl = document.getElementById('question_67865613')
+              || Array.from(document.querySelectorAll('input[type="text"]')).find(function(e) {
+                     return /how did you.*hear|how.*initially.*hear/i.test(getLabelForElement(e));
+                 });
+    if (hdyhEl && isFieldFillable(hdyhEl) && !fillState.filledElements.has(hdyhEl)) {
+        if (fillField(hdyhEl, 'LinkedIn')) { fillState.filledElements.add(hdyhEl); filled++; console.log('[GH] how-did-you-hear = LinkedIn'); }
+    }
+
+    // Fallback: any remaining text inputs by label
+    var allInputs = Array.from(document.querySelectorAll(
+        'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]), textarea'
+    ));
+    var ghLabelMap = [
+        { pat: /first\s*name/i,    v: firstName  },
+        { pat: /last\s*name/i,     v: lastName   },
+        { pat: /preferred.*name/i, v: firstName  },
+        { pat: /email/i,       v: email      },
+        { pat: /phone/i,       v: phone      },
+        { pat: /location|city/i,   v: city       },
+        { pat: /linkedin/i,        v: linkedin   },
+        { pat: /website|portfolio/i, v: portfolio || linkedin },
+        { pat: /github/i,          v: github     }
+    ];
+    for (var ii = 0; ii < allInputs.length; ii++) {
+        var inp = allInputs[ii];
+        if (!isFieldFillable(inp) || fillState.filledElements.has(inp)) continue;
+        var lbl = getLabelForElement(inp).toLowerCase().replace(/[*]+/g,'').trim();
+        for (var fi = 0; fi < ghLabelMap.length; fi++) {
+            var fm = ghLabelMap[fi];
+            if (!fm.v) continue;
+            if (fm.pat.test(lbl)) {
+                if (fillField(inp, fm.v)) { fillState.filledElements.add(inp); filled++; console.log('[GH] label fill:', lbl.substring(0,40), '=', fm.v.substring(0,40)); }
+                break;
+            }
+        }
+    }
+
+    // ── 2. React Select dropdowns ─────────────────────────────────────────
+    // Structure: div.select__container > input.select__input[role=combobox]
+    // Open via coordinate-based mousedown (ctrl.click opens wrong dropdown)
+    // Skip if options >= 50 (that is the phone-country list with 200+ entries)
+
+    // CONFIRMED WORKING METHOD (from console testing):
+    // 1. mousedown+mouseup+click on select__control div opens the dropdown
+    // 2. Type search term char-by-char → filters results
+    // 3. Click the matching option
+    // Country = 244 options → must type to filter (e.g. "India" → "India +91")
+    // Other selects (gender, veteran, etc.) = <10 options → no typing needed
+    async function ghOpenSelect(cont, desiredValue, extraMs) {
+        // Find the control div (confirmed: class contains select__control)
+        var control = cont.querySelector('[class*="select__control"]');
+        var inp2 = cont.querySelector('input.select__input[role="combobox"]')
+                || cont.querySelector('input[role="combobox"]')
+                || cont.querySelector('input.select__input');
+        if (!control || !inp2) return false;
+
+        // Open: mousedown+mouseup+click on control div (confirmed working)
+        var rect = control.getBoundingClientRect();
+        control.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true, view:window, clientX:rect.left+10, clientY:rect.top+10}));
+        control.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true, cancelable:true, view:window, clientX:rect.left+10, clientY:rect.top+10}));
+        control.dispatchEvent(new MouseEvent('click',     {bubbles:true, cancelable:true, view:window, clientX:rect.left+10, clientY:rect.top+10}));
+        await delay(400);
+
+        // Check how many options appeared
+        var optsAfterOpen = Array.from(document.querySelectorAll('[class*="select__option"]')).filter(function(o) {
+            var r2 = o.getBoundingClientRect(); return r2.width > 0 && r2.height > 0;
+        });
+        console.log('[GH] Opened select, options:', optsAfterOpen.length, '| searching for:', desiredValue.substring(0,30));
+
+        // If many options (country list = 244), type to filter
+        if (optsAfterOpen.length > 10) {
+            var ns2 = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            inp2.focus();
+            var cur2 = '';
+            for (var ci3 = 0; ci3 < desiredValue.length; ci3++) {
+                var ch2 = desiredValue[ci3], kc2 = ch2.charCodeAt(0);
+                cur2 += ch2;
+                inp2.dispatchEvent(new KeyboardEvent('keydown', {key:ch2, keyCode:kc2, which:kc2, bubbles:true}));
+                if (ns2) ns2.call(inp2, cur2); else inp2.value = cur2;
+                inp2.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:ch2}));
+                inp2.dispatchEvent(new KeyboardEvent('keyup', {key:ch2, keyCode:kc2, which:kc2, bubbles:true}));
+            }
+            await delay(800);
+        }
+
+        // Read filtered options
+        var opts = Array.from(document.querySelectorAll('[class*="select__option"]')).filter(function(o) {
+            var r2 = o.getBoundingClientRect(); return r2.width > 0 && r2.height > 0;
+        });
+        if (opts.length === 0) {
+            console.log('[GH] No options visible for:', desiredValue);
+            document.body.click(); return false;
+        }
+
+        var desired = desiredValue.toLowerCase();
+        // For country: match "India +91" when searching "India" — startsWith is safest
+        // For others: exact match first, then includes
+        var target = opts.find(function(o) { return o.textContent.trim().toLowerCase() === desired; })
+                  || opts.find(function(o) { return o.textContent.trim().toLowerCase().startsWith(desired + ' ') || o.textContent.trim().toLowerCase().startsWith(desired + '+'); })
+                  || opts.find(function(o) { return o.textContent.trim().toLowerCase().includes(desired); })
+                  || opts.find(function(o) { return desired.split(' ').every(function(w){ return o.textContent.trim().toLowerCase().includes(w); }); });
+
+        if (!target) {
+            console.log('[GH] No match for:', desiredValue, '| opts:', opts.slice(0,3).map(function(o){return o.textContent.trim();}).join(' | '));
+            document.body.click(); return false;
+        }
+        target.click();
+        filled++;
+        console.log('[GH] Selected:', target.textContent.trim(), 'for search:', desiredValue.substring(0,30));
+        await delay(200);
+        return true;
+    }
+
+    // Confirmed labels from console: Country*, Location (City)*,
+    // non-compete (full question text), Point of Data Transfer*,
+    // Gender, Are you Hispanic/Latino?, Veteran Status, Disability Status
+    var ghSelectMap = [
+        // Country — inside div.phone-input__country, id=country
+        { pat: /^country/i,                      val: (p.contact && p.contact.country) || p.country || 'India', ms: 400, id: 'country' },
+        // Non-compete — exact label from console
+        { pat: /non.?compete|non.?solicit|confidentiality/i, val: 'No',                ms: 400 },
+        // Point of Data Transfer — confirmed label
+        { pat: /point of data transfer/i,        val: 'I am not currently based in the UK, EU/EEA, Australia, or Singapore', ms: 400 },
+        // Gender
+        { pat: /^gender$/i,                      val: 'Decline To Self Identify',      ms: 400, id: 'gender' },
+        // Hispanic/Latino
+        { pat: /hispanic|latino/i,               val: 'No',                             ms: 600, id: 'hispanic_ethnicity' },
+        // Veteran Status
+        { pat: /veteran/i,                       val: 'I am not a protected veteran',  ms: 400, id: 'veteran_status' },
+        // Disability Status — confirmed options from screenshot
+        { pat: /disability/i,                    val: 'No, I do not have a disability and have not had one in the past', ms: 400, id: 'disability_status' }
+    ];
+
+    var selectConts = Array.from(document.querySelectorAll(
+        'div.select__container, [class*="select__container"], [class*="Select__container"]'
+    ));
+    console.log('[GH] React Select containers:', selectConts.length);
+    for (var sci = 0; sci < selectConts.length; sci++) {
+        var cont = selectConts[sci];
+        if (fillState.filledElements.has(cont)) continue;
+        var contLabel = '';
+        var contInputId = '';
+        var cp = cont.parentElement; var depth = 0;
+        while (cp && cp !== document.body && !contLabel && depth < 8) {
+            var lEl = cp.querySelector('label');
+            if (lEl) { contLabel = lEl.textContent.trim(); break; }
+            var da = cp.getAttribute('data-field') || cp.getAttribute('aria-label') || '';
+            if (da) { contLabel = da; break; }
+            cp = cp.parentElement; depth++;
+        }
+        var cInp = cont.querySelector('input');
+        if (cInp) contInputId = cInp.id || '';
+        if (!contLabel && !contInputId) continue;
+
+        // Match by id first (more reliable), then by label text
+        var mapping = ghSelectMap.find(function(m) {
+            return (m.id && m.id === contInputId) || m.pat.test(contLabel);
+        });
+        if (!mapping) continue;
+        console.log('[GH] select:', contLabel.substring(0,50), 'id:'+contInputId, '→', mapping.val);
+
+        // For country — derive from profile, not hardcoded
+        var selectVal = mapping.val;
+        if (/^country/i.test(contLabel) || contInputId === 'country') {
+            selectVal = (p.contact && p.contact.country) || p.country || 'India';
+        }
+        if (/disability/i.test(contLabel)) {
+            selectVal = 'No, I do not have a disability and have not had one in the past';
+        }
+
+        var ok = await ghOpenSelect(cont, selectVal, mapping.ms);
+        if (ok) fillState.filledElements.add(cont);
+        await delay(300);
+    }
+
+    // ── 2b. London commute question — pick "No" (not based in London) ─────
+    // Checkboxes with name question_67865610[] — pick appropriate option
+    await (async function handleLondonQuestion() {
+        var londonBoxes = Array.from(document.querySelectorAll('input[type="checkbox"]')).filter(function(cb) {
+            return /london|commute|greater london/i.test(getLabelForElement(cb));
+        });
+        if (londonBoxes.length === 0) return;
+        // Default: select "No" option (last checkbox in group)
+        var noBox = londonBoxes.find(function(cb) {
+            return getLabelForElement(cb).trim().toLowerCase() === 'no';
+        }) || londonBoxes[londonBoxes.length - 1];
+        if (noBox && !noBox.checked && !fillState.filledElements.has(noBox)) {
+            noBox.click();
+            noBox.dispatchEvent(new Event('change',{bubbles:true}));
+            fillState.filledElements.add(noBox);
+            filled++;
+            console.log('[GH] London commute: selected No');
+        }
+    })();
+
+    // ── 3. Checkboxes ─────────────────────────────────────────────────────
+    // Tick: Acknowledge/Confirm, I consent to recording
+    // Uncheck: I do NOT consent (should never be checked)
+    // Skip: London commute (handled separately)
+    var checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+    for (var ci = 0; ci < checkboxes.length; ci++) {
+        var cb = checkboxes[ci];
+        if (!isFieldFillable(cb)) continue;
+        var cbLabel = getLabelForElement(cb).toLowerCase();
+        // Skip London commute checkboxes — handled by handleLondonQuestion
+        if (/london|commute/i.test(cbLabel)) continue;
+        // UNCHECK "do not consent" — this must stay unchecked
+        if (/i do not consent|do not consent|not consent/i.test(cbLabel)) {
+            if (cb.checked) { cb.click(); cb.dispatchEvent(new Event('change',{bubbles:true})); console.log('[GH] unchecked do-not-consent'); }
+            fillState.filledElements.add(cb);
+            continue;
+        }
+        if (fillState.filledElements.has(cb)) continue;
+        // TICK consent/acknowledge/confirm/agree
+        if (/acknowledge|confirm|consent|agree|accept|certif|terms|privacy|authorize|i have read/i.test(cbLabel)) {
+            if (!cb.checked) { cb.click(); cb.dispatchEvent(new Event('change',{bubbles:true})); filled++; console.log('[GH] ticked:', cbLabel.substring(0,60)); }
+            fillState.filledElements.add(cb);
+        }
+        await delay(50);
+    }
+
+    // ── 4. Radio buttons ─────────────────────────────────────────────────
+    var radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+    var seenGroups = {};
+    for (var ri = 0; ri < radios.length; ri++) {
+        var rb = radios[ri];
+        if (seenGroups[rb.name] || fillState.filledElements.has(rb) || !isFieldFillable(rb)) continue;
+        var rbLbl = getLabelForElement(rb).toLowerCase();
+        var fs2 = rb.closest('fieldset');
+        var grpLbl = fs2 ? (fs2.querySelector('legend')||{textContent:''}).textContent.toLowerCase() : '';
+        var combined = grpLbl + ' ' + rbLbl;
+        var rbVal = /authorized|work.auth|legally/i.test(combined) ? (workAuth||'Yes')
+                  : /sponsor/i.test(combined)  ? 'No'
+                  : /reloc/i.test(combined)    ? (relocation||'Yes')
+                  : /veteran/i.test(combined)  ? 'No'
+                  : /disability/i.test(combined) ? 'No'
+                  : null;
+        if (!rbVal) continue;
+        var grpRadios = Array.from(document.querySelectorAll('input[type="radio"][name="'+rb.name+'"]'));
+        var tgt = grpRadios.find(function(r2){ return getLabelForElement(r2).toLowerCase().includes(rbVal.toLowerCase()); })
+               || (rbVal==='Yes' ? grpRadios[0] : grpRadios[grpRadios.length-1]);
+        if (tgt && !tgt.checked) {
+            tgt.checked = true; tgt.dispatchEvent(new Event('change',{bubbles:true})); tgt.click();
+            fillState.filledElements.add(tgt); seenGroups[rb.name] = true; filled++;
+            console.log('[GH] radio:', grpLbl.substring(0,40), '→', rbVal);
+        }
+        await delay(100);
+    }
+
+    // ── 5. AI open-ended questions ────────────────────────────────────────
+    if (AUTO_FILL_CONFIG.AI_QUESTIONS_ENABLED) {
+        var textareas = Array.from(document.querySelectorAll('textarea'));
+        for (var ti = 0; ti < textareas.length; ti++) {
+            var ta = textareas[ti];
+            if (!isFieldFillable(ta) || fillState.filledElements.has(ta)) continue;
+            var taLabel = getLabelForElement(ta);
+            if (taLabel && isAIQuestion(taLabel)) {
+                console.log('[GH] AI question:', taLabel.substring(0,60));
+                var answer = await getAIAnswer(taLabel, profile);
+                if (answer) { fillField(ta, answer); fillState.filledElements.add(ta); filled++; }
+            }
+        }
+    }
+
+    console.log('[AutoFill] fillGreenhouse done, filled:', filled);
+    return filled;
+}
+
+
+// ==============================================================
+async function fillLever(profile) {
+    console.log('[AutoFill] fillLever start');
+    var p = profile || {};
+    var filled = 0;
+
+    var firstName = (p.first_name) || (p.personal && p.personal.first_name) || '';
+    var lastName  = (p.last_name)  || (p.personal && p.personal.last_name)  || '';
+    var email     = (p.contact && p.contact.email) || p.email || '';
+    var phone     = (p.contact && p.contact.phone) || p.phone || '';
+    var city      = ((p.contact && p.contact.city) || p.city || '').split(',')[0].trim();
+    var linkedin  = (p.social && p.social.linkedin) || p.linkedin || '';
+    var portfolio = (p.social && p.social.portfolio) || p.portfolio || '';
+    var github    = (p.social && p.social.github) || p.github || '';
+    var twitter   = (p.social && p.social.twitter) || p.twitter || '';
+
+    // Lever uses name attributes like urls[LinkedIn], resume[location] etc.
+    var leverMap = [
+        { selector: 'input[name="name"], input[id*="name"][name*="name"]', value: firstName + (lastName ? ' ' + lastName : '') },
+        { selector: 'input[name="email"]', value: email },
+        { selector: 'input[name="phone"]', value: phone },
+        { selector: 'input[name="org"], input[name="company"]', value: (p.experience && p.experience[0] && p.experience[0].company) || '' },
+        { selector: 'input[name="location"], input[name="resume[location]"]', value: city },
+        { selector: 'input[name="urls[LinkedIn]"], input[placeholder*="LinkedIn"]', value: linkedin },
+        { selector: 'input[name="urls[Twitter]"], input[placeholder*="Twitter"]', value: twitter },
+        { selector: 'input[name="urls[GitHub]"], input[placeholder*="GitHub"]', value: github },
+        { selector: 'input[name="urls[Portfolio]"], input[placeholder*="Portfolio"], input[placeholder*="portfolio"]', value: portfolio },
+        { selector: 'input[name="urls[Other]"]', value: portfolio || github }
+    ];
+
+    for (var li = 0; li < leverMap.length; li++) {
+        var lm = leverMap[li];
+        if (!lm.value) continue;
+        var el = document.querySelector(lm.selector);
+        if (el && isFieldFillable(el) && !fillState.filledElements.has(el)) {
+            var ok = fillField(el, lm.value);
+            if (ok) { fillState.filledElements.add(el); filled++; }
+        }
+    }
+
+    // Generic fallback for remaining unlabeled inputs
+    var allInputs = Array.from(document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], textarea'));
+    for (var ai = 0; ai < allInputs.length; ai++) {
+        var inp = allInputs[ai];
+        if (!isFieldFillable(inp) || fillState.filledElements.has(inp)) continue;
+        var lbl = getLabelForElement(inp).toLowerCase();
+        var nm  = (inp.name || inp.id || '').toLowerCase();
+        var combined = lbl + ' ' + nm;
+        var val = '';
+        if (/first.?name/i.test(combined)) val = firstName;
+        else if (/last.?name/i.test(combined)) val = lastName;
+        else if (/\bemail\b/i.test(combined)) val = email;
+        else if (/\bphone\b|\bmobile\b|\btel\b/i.test(combined)) val = phone;
+        else if (/\bcity\b|\blocation\b/i.test(combined)) val = city;
+        if (val) {
+            fillField(inp, val);
+            fillState.filledElements.add(inp);
+            filled++;
+        }
+    }
+
+    if (AUTO_FILL_CONFIG.AI_QUESTIONS_ENABLED) {
+        var textareas = Array.from(document.querySelectorAll('textarea'));
+        for (var ti = 0; ti < textareas.length; ti++) {
+            var ta = textareas[ti];
+            if (!isFieldFillable(ta) || fillState.filledElements.has(ta)) continue;
+            var taLabel = getLabelForElement(ta);
+            if (taLabel && isAIQuestion(taLabel)) {
+                var answer = await getAIAnswer(taLabel, profile);
+                if (answer) { fillField(ta, answer); fillState.filledElements.add(ta); filled++; }
+            }
+        }
+    }
+
+    console.log('[AutoFill] fillLever done, filled:', filled);
+    return filled;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 5c. ASHBY FILL
+// ══════════════════════════════════════════════════════════════════
+async function fillAshby(profile) {
+    console.log('[AutoFill] fillAshby start');
+    var p = profile || {};
+    var filled = 0;
+
+    var firstName = (p.first_name) || (p.personal && p.personal.first_name) || '';
+    var lastName  = (p.last_name)  || (p.personal && p.personal.last_name)  || '';
+    var email     = (p.contact && p.contact.email) || p.email || '';
+    var phone     = (p.contact && p.contact.phone) || p.phone || '';
+    var city      = ((p.contact && p.contact.city) || p.city || '').split(',')[0].trim();
+    var linkedin  = (p.social && p.social.linkedin) || p.linkedin || '';
+    var portfolio = (p.social && p.social.portfolio) || p.portfolio || '';
+    var github    = (p.social && p.social.github) || p.github || '';
+
+    // Ashby uses aria-label matching
+    var ariaMap = [
+        { ariaLabel: 'First Name', value: firstName },
+        { ariaLabel: 'Last Name', value: lastName },
+        { ariaLabel: 'Email', value: email },
+        { ariaLabel: 'Phone', value: phone },
+        { ariaLabel: 'Phone Number', value: phone },
+        { ariaLabel: 'City', value: city },
+        { ariaLabel: 'Location', value: city },
+        { ariaLabel: 'LinkedIn Profile', value: linkedin },
+        { ariaLabel: 'LinkedIn URL', value: linkedin },
+        { ariaLabel: 'LinkedIn', value: linkedin },
+        { ariaLabel: 'Portfolio', value: portfolio },
+        { ariaLabel: 'Website', value: portfolio },
+        { ariaLabel: 'GitHub', value: github },
+        { ariaLabel: 'GitHub Profile', value: github }
+    ];
+
+    var allEls = Array.from(document.querySelectorAll('input, textarea'));
+    for (var i = 0; i < allEls.length; i++) {
+        var el = allEls[i];
+        if (!isFieldFillable(el) || fillState.filledElements.has(el)) continue;
+        var aria = el.getAttribute('aria-label') || '';
+        var match = ariaMap.find(function(m) {
+            return aria.toLowerCase() === m.ariaLabel.toLowerCase() ||
+                   aria.toLowerCase().includes(m.ariaLabel.toLowerCase());
+        });
+        if (match && match.value) {
+            var ok = fillField(el, match.value);
+            if (ok) { fillState.filledElements.add(el); filled++; }
+        }
+    }
+
+    // Fallback by label text
+    var inputs2 = Array.from(document.querySelectorAll('input:not([type="hidden"]), textarea'));
+    for (var j = 0; j < inputs2.length; j++) {
+        var el2 = inputs2[j];
+        if (!isFieldFillable(el2) || fillState.filledElements.has(el2)) continue;
+        var lbl = getLabelForElement(el2).toLowerCase();
+        var val = '';
+        if (/first.?name/i.test(lbl)) val = firstName;
+        else if (/last.?name/i.test(lbl)) val = lastName;
+        else if (/\bemail\b/i.test(lbl)) val = email;
+        else if (/\bphone\b|\bmobile\b/i.test(lbl)) val = phone;
+        else if (/\bcity\b|\blocation\b/i.test(lbl)) val = city;
+        else if (/linkedin/i.test(lbl)) val = linkedin;
+        else if (/portfolio|website/i.test(lbl)) val = portfolio;
+        else if (/github/i.test(lbl)) val = github;
+        if (val) { fillField(el2, val); fillState.filledElements.add(el2); filled++; }
+    }
+
+    if (AUTO_FILL_CONFIG.AI_QUESTIONS_ENABLED) {
+        var textareas = Array.from(document.querySelectorAll('textarea'));
+        for (var ti = 0; ti < textareas.length; ti++) {
+            var ta = textareas[ti];
+            if (!isFieldFillable(ta) || fillState.filledElements.has(ta)) continue;
+            var taLabel = getLabelForElement(ta);
+            if (taLabel && isAIQuestion(taLabel)) {
+                var answer = await getAIAnswer(taLabel, profile);
+                if (answer) { fillField(ta, answer); fillState.filledElements.add(ta); filled++; }
+            }
+        }
+    }
+
+    console.log('[AutoFill] fillAshby done, filled:', filled);
+    return filled;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 5d. GOOGLE FORMS FILL
+// ══════════════════════════════════════════════════════════════════
+async function fillGoogleForms(profile) {
+    console.log('[AutoFill] fillGoogleForms start');
+    var p = profile || {};
+    var filled = 0;
+
+    var firstName = (p.first_name) || (p.personal && p.personal.first_name) || '';
+    var lastName  = (p.last_name)  || (p.personal && p.personal.last_name)  || '';
+    var email     = (p.contact && p.contact.email) || p.email || '';
+    var phone     = (p.contact && p.contact.phone) || p.phone || '';
+    var fullName  = (firstName + ' ' + lastName).trim();
+
+    // Google Forms: question headings are in data-params or visible heading spans
+    var questionContainers = Array.from(document.querySelectorAll('[data-params], .freebirdFormviewerViewItemsItemItem'));
+    for (var qi = 0; qi < questionContainers.length; qi++) {
+        var qc = questionContainers[qi];
+        // Get question text
+        var heading = qc.querySelector('[role="heading"], .freebirdFormviewerViewItemsItemItemTitle');
+        var qText = heading ? heading.textContent.trim().toLowerCase() : '';
+        if (!qText) continue;
+
+        var inp = qc.querySelector('input[type="text"], textarea');
+        if (!inp || !isFieldFillable(inp) || fillState.filledElements.has(inp)) continue;
+
+        var val = '';
+        if (/first.?name/i.test(qText)) val = firstName;
+        else if (/last.?name/i.test(qText)) val = lastName;
+        else if (/\bname\b/i.test(qText) && !/last|sur|family/i.test(qText)) val = fullName;
+        else if (/\bemail\b/i.test(qText)) val = email;
+        else if (/\bphone\b|\bmobile\b|\bcontact\b/i.test(qText)) val = phone;
+        else if (AUTO_FILL_CONFIG.AI_QUESTIONS_ENABLED && isAIQuestion(qText)) {
+            val = await getAIAnswer(qText, profile) || '';
+        }
+
+        if (val) {
+            fillField(inp, val);
+            fillState.filledElements.add(inp);
+            filled++;
+        }
+    }
+
+    // Fallback: any unlabeled text inputs
+    var inputs = Array.from(document.querySelectorAll('input[type="text"], textarea'));
+    for (var i = 0; i < inputs.length; i++) {
+        var el = inputs[i];
+        if (!isFieldFillable(el) || fillState.filledElements.has(el)) continue;
+        var lbl = getLabelForElement(el).toLowerCase();
+        var val2 = '';
+        if (/first.?name/i.test(lbl)) val2 = firstName;
+        else if (/last.?name/i.test(lbl)) val2 = lastName;
+        else if (/\bemail\b/i.test(lbl)) val2 = email;
+        else if (/\bphone\b|\bmobile\b/i.test(lbl)) val2 = phone;
+        if (val2) { fillField(el, val2); fillState.filledElements.add(el); filled++; }
+    }
+
+    console.log('[AutoFill] fillGoogleForms done, filled:', filled);
+    return filled;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 5e. SMARTRECRUITERS FILL
+// ══════════════════════════════════════════════════════════════════
+async function fillSmartRecruiters(profile) {
+    console.log('[AutoFill] fillSmartRecruiters start');
+    var p = profile || {};
+    var filled = 0;
+
+    var firstName = (p.first_name) || (p.personal && p.personal.first_name) || '';
+    var lastName  = (p.last_name)  || (p.personal && p.personal.last_name)  || '';
+    var email     = (p.contact && p.contact.email) || p.email || '';
+    var phone     = (p.contact && p.contact.phone) || p.phone || '';
+    var city      = ((p.contact && p.contact.city) || p.city || '').split(',')[0].trim();
+    var country   = (p.contact && p.contact.country) || p.country || '';
+    var linkedin  = (p.social && p.social.linkedin) || p.linkedin || '';
+
+    // SmartRecruiters may use SPL/shadow DOM components
+    // Try to pierce shadow roots
+    function getAllInputs(root) {
+        var results = Array.from((root || document).querySelectorAll('input, textarea, select'));
+        var hosts = Array.from((root || document).querySelectorAll('*'));
+        hosts.forEach(function(h) {
+            if (h.shadowRoot) {
+                results = results.concat(getAllInputs(h.shadowRoot));
+            }
+        });
+        return results;
+    }
+
+    var allEls = getAllInputs(document);
+    var fieldMap = [
+        { patterns: [/first.?name/i, /given.?name/i], value: firstName },
+        { patterns: [/last.?name/i, /family.?name/i, /surname/i], value: lastName },
+        { patterns: [/\bemail\b/i], value: email },
+        { patterns: [/\bphone\b/i, /\bmobile\b/i, /\btel\b/i], value: phone },
+        { patterns: [/\bcity\b/i, /\blocation\b/i], value: city },
+        { patterns: [/\bcountry\b/i], value: country },
+        { patterns: [/linkedin/i], value: linkedin }
+    ];
+
+    for (var i = 0; i < allEls.length; i++) {
+        var el = allEls[i];
+        if (!isFieldFillable(el) || fillState.filledElements.has(el)) continue;
+        var lbl = getLabelForElement(el).toLowerCase();
+        var nm  = (el.name || el.id || el.getAttribute('data-field') || '').toLowerCase();
+        var combined = lbl + ' ' + nm;
+
+        for (var fi = 0; fi < fieldMap.length; fi++) {
+            var fm = fieldMap[fi];
+            if (!fm.value) continue;
+            if (fm.patterns.some(function(p2) { return p2.test(combined); })) {
+                var tag = (el.tagName || '').toLowerCase();
+                var ok = false;
+                if (tag === 'select') ok = fillSelect(el, fm.value);
+                else ok = fillField(el, fm.value);
+                if (ok) { fillState.filledElements.add(el); filled++; }
+                break;
+            }
+        }
+    }
+
+    if (AUTO_FILL_CONFIG.AI_QUESTIONS_ENABLED) {
+        var textareas = getAllInputs(document).filter(function(e) { return e.tagName && e.tagName.toLowerCase() === 'textarea'; });
+        for (var ti = 0; ti < textareas.length; ti++) {
+            var ta = textareas[ti];
+            if (!isFieldFillable(ta) || fillState.filledElements.has(ta)) continue;
+            var taLabel = getLabelForElement(ta);
+            if (taLabel && isAIQuestion(taLabel)) {
+                var answer = await getAIAnswer(taLabel, profile);
+                if (answer) { fillField(ta, answer); fillState.filledElements.add(ta); filled++; }
+            }
+        }
+    }
+
+    console.log('[AutoFill] fillSmartRecruiters done, filled:', filled);
+    return filled;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 5f. GENERIC FILL
+// ══════════════════════════════════════════════════════════════════
+async function fillGeneric(profile) {
+    console.log('[AutoFill] fillGeneric start');
+    var p = profile || {};
+    var filled = 0;
+
+    var firstName = (p.first_name) || (p.personal && p.personal.first_name) || '';
+    var lastName  = (p.last_name)  || (p.personal && p.personal.last_name)  || '';
+    var email     = (p.contact && p.contact.email) || p.email || '';
+    var phone     = (p.contact && p.contact.phone) || p.phone || '';
+    var city      = ((p.contact && p.contact.city) || p.city || '').split(',')[0].trim();
+    var country   = (p.contact && p.contact.country) || p.country || '';
+    var linkedin  = (p.social && p.social.linkedin) || p.linkedin || '';
+    var portfolio = (p.social && p.social.portfolio) || p.portfolio || '';
+    var github    = (p.social && p.social.github) || p.github || '';
+    var fullName  = (firstName + ' ' + lastName).trim();
+
+    var fieldRules = [
+        { test: function(l,n) { return /first.?name|given.?name|fname/i.test(l+' '+n); }, value: firstName },
+        { test: function(l,n) { return /last.?name|family.?name|surname|lname/i.test(l+' '+n); }, value: lastName },
+        { test: function(l,n) { return /\bfull.?name\b|\byour.?name\b/i.test(l+' '+n) && !/first|last/i.test(l+' '+n); }, value: fullName },
+        { test: function(l,n) { return /\bemail\b/i.test(l+' '+n); }, value: email },
+        { test: function(l,n) { return /\bphone\b|\bmobile\b|\btel\b|\bcell\b/i.test(l+' '+n); }, value: phone },
+        { test: function(l,n) { return /\bcity\b/i.test(l+' '+n); }, value: city },
+        { test: function(l,n) { return /\bcountry\b/i.test(l+' '+n); }, value: country },
+        { test: function(l,n) { return /\blocation\b|\baddress\b/i.test(l+' '+n); }, value: city },
+        { test: function(l,n) { return /linkedin/i.test(l+' '+n); }, value: linkedin },
+        { test: function(l,n) { return /portfolio|personal.?site|personal.?web/i.test(l+' '+n); }, value: portfolio },
+        { test: function(l,n) { return /github/i.test(l+' '+n); }, value: github }
+    ];
+
+    var allEls = Array.from(document.querySelectorAll(
+        'input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input:not([type]), textarea, select'
+    ));
+
+    for (var i = 0; i < allEls.length; i++) {
+        var el = allEls[i];
+        if (!isFieldFillable(el) || fillState.filledElements.has(el)) continue;
+        var lbl = getLabelForElement(el).toLowerCase();
+        var nm  = (el.name || el.id || el.getAttribute('placeholder') || '').toLowerCase();
+        for (var ri = 0; ri < fieldRules.length; ri++) {
+            var rule = fieldRules[ri];
+            if (!rule.value) continue;
+            if (rule.test(lbl, nm)) {
+                var tag = (el.tagName || '').toLowerCase();
+                var ok = false;
+                if (tag === 'select') ok = fillSelectByLabel(el, rule.value);
+                else ok = fillField(el, rule.value);
+                if (ok) { fillState.filledElements.add(el); filled++; }
+                break;
+            }
+        }
+    }
+
+    if (AUTO_FILL_CONFIG.AI_QUESTIONS_ENABLED) {
+        var textareas = Array.from(document.querySelectorAll('textarea'));
+        for (var ti = 0; ti < textareas.length; ti++) {
+            var ta = textareas[ti];
+            if (!isFieldFillable(ta) || fillState.filledElements.has(ta)) continue;
+            var taLabel = getLabelForElement(ta);
+            if (taLabel && isAIQuestion(taLabel)) {
+                var answer = await getAIAnswer(taLabel, profile);
+                if (answer) { fillField(ta, answer); fillState.filledElements.add(ta); filled++; }
+            }
+        }
+    }
+
+    console.log('[AutoFill] fillGeneric done, filled:', filled);
+    return filled;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 6. FILL WORKDAY — MAIN FUNCTION
+// ══════════════════════════════════════════════════════════════════
+async function fillWorkday(profile) {
+    console.log('[AutoFill] fillWorkday start');
+    var p = profile || {};
+    var filled = 0;
+
+    // ── Extract profile data ─────────────────────────────────────
+    var firstName = (p.first_name) || (p.personal && p.personal.first_name) || '';
+    var middleName = (p.middle_name) || (p.personal && p.personal.middle_name) || '';
+    var lastName = (p.last_name) || (p.personal && p.personal.last_name) || '';
+    var phoneRaw = (p.contact && p.contact.phone) || p.phone || '';
+    var address = (p.contact && p.contact.address) || p.address || '';
+    var city = ((p.contact && p.contact.city) || p.city || '').split(',')[0].trim();
+    var postalCode = (p.contact && p.contact.postal_code) || (p.contact && p.contact.zip_code) || p.postal_code || '';
+    var country = (p.contact && p.contact.country) || p.country || '';
+    var extension = (p.contact && p.contact.phone_extension) || p.extension || '';
+    var hasWorkedAtWorkday = p.has_worked_at_workday === true;
+
+    // Extract phone digits (strip country code)
+    var phone = phoneRaw;
+    if (phoneRaw.startsWith('+')) {
+        var digits = phoneRaw.slice(1);
+        if (digits.length === 12) phone = digits.slice(2);
+        else if (digits.length === 11) phone = digits.slice(1);
+        else if (digits.length === 13) phone = digits.slice(3);
+        else phone = digits.replace(/^\d{1,3}/, '') || digits;
+    }
+
+    // Extract country code from phone (+91 → "India", +1 → "United States")
+    var countryCodeMap = {
+        '+1': 'United States',
+        '+7': 'Russia',
+        '+20': 'Egypt',
+        '+27': 'South Africa',
+        '+30': 'Greece',
+        '+31': 'Netherlands',
+        '+32': 'Belgium',
+        '+33': 'France',
+        '+34': 'Spain',
+        '+36': 'Hungary',
+        '+39': 'Italy',
+        '+40': 'Romania',
+        '+41': 'Switzerland',
+        '+43': 'Austria',
+        '+44': 'United Kingdom',
+        '+45': 'Denmark',
+        '+46': 'Sweden',
+        '+47': 'Norway',
+        '+48': 'Poland',
+        '+49': 'Germany',
+        '+51': 'Peru',
+        '+52': 'Mexico',
+        '+55': 'Brazil',
+        '+56': 'Chile',
+        '+60': 'Malaysia',
+        '+61': 'Australia',
+        '+62': 'Indonesia',
+        '+63': 'Philippines',
+        '+64': 'New Zealand',
+        '+65': 'Singapore',
+        '+66': 'Thailand',
+        '+81': 'Japan',
+        '+82': 'South Korea',
+        '+84': 'Vietnam',
+        '+86': 'China',
+        '+90': 'Turkey',
+        '+91': 'India',
+        '+92': 'Pakistan',
+        '+93': 'Afghanistan',
+        '+94': 'Sri Lanka',
+        '+95': 'Myanmar',
+        '+98': 'Iran',
+        '+212': 'Morocco',
+        '+234': 'Nigeria',
+        '+254': 'Kenya',
+        '+971': 'United Arab Emirates'
+    };
+
+    // Derive country code from phone
+    var phoneCountryCode = '';
+    if (phoneRaw.startsWith('+')) {
+        for (var pc in countryCodeMap) {
+            if (phoneRaw.startsWith(pc)) {
+                phoneCountryCode = countryCodeMap[pc];
+                break;
+            }
+        }
+    }
+    // Fallback: use profile country if no phone country code found
+    if (!phoneCountryCode && country) phoneCountryCode = country;
+
+    // ── 1. FILL TEXT INPUTS BY EXACT ID ──────────────────────────
+    var textFieldMap = [
+        { id: 'name--legalName--firstName', v: firstName, label: 'Given Name' },
+        { id: 'name--legalName--middleName', v: middleName, label: 'Middle Name' },
+        { id: 'name--legalName--lastName', v: lastName, label: 'Family Name' },
+        { id: 'name--legalName--firstNameLocal', v: firstName, label: 'Local Given Name' },
+        { id: 'name--legalName--middleNameLocal', v: middleName, label: 'Local Middle Name' },
+        { id: 'name--legalName--lastNameLocal', v: lastName, label: 'Local Family Name' },
+        { id: 'address--addressLine1', v: address, label: 'Address Line 1' },
+        { id: 'address--city', v: city, label: 'City' },
+        { id: 'address--postalCode', v: postalCode, label: 'Postal Code' },
+        { id: 'phoneNumber--phoneNumber', v: phone, label: 'Phone Number' },
+        { id: 'phoneNumber--extension', v: extension, label: 'Extension' }
+    ];
+
+    for (var ti = 0; ti < textFieldMap.length; ti++) {
+        var tfm = textFieldMap[ti];
+        if (!tfm.v) continue;
+        var el = document.getElementById(tfm.id);
+        if (el && isFieldFillable(el) && !fillState.filledElements.has(el)) {
+            if (fillField(el, tfm.v)) {
+                fillState.filledElements.add(el);
+                filled++;
+                console.log('[WD] text filled:', tfm.label, '=', tfm.v.substring(0, 40));
+            }
+        }
+        await delay(80);
+    }
+
+    // ── 2. PHONE COUNTRY CODE (searchable input) ──────────────────
+    // Input id=phoneNumber--countryPhoneCode, placeholder="Search"
+    // User types country name to filter, React Select shows options
+    async function fillPhoneCountryCode(desiredCountry) {
+        var ccInput = document.getElementById('phoneNumber--countryPhoneCode');
+        if (!ccInput || !isFieldFillable(ccInput) || fillState.filledElements.has(ccInput)) return false;
+        if (!desiredCountry) return false;
+
+        ccInput.click();
+        ccInput.focus();
+        await delay(150);
+
+        // Type country name char-by-char
+        var ns3 = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        var cur3 = '';
+        for (var ci4 = 0; ci4 < desiredCountry.length; ci4++) {
+            var ch4 = desiredCountry[ci4];
+            var kc4 = ch4.charCodeAt(0);
+            cur3 += ch4;
+            ccInput.dispatchEvent(new KeyboardEvent('keydown', {key:ch4, keyCode:kc4, which:kc4, bubbles:true}));
+            if (ns3) ns3.call(ccInput, cur3); else ccInput.value = cur3;
+            ccInput.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:ch4}));
+            ccInput.dispatchEvent(new KeyboardEvent('keyup', {key:ch4, keyCode:kc4, which:kc4, bubbles:true}));
+            await delay(40);
+        }
+
+        // Press Enter to trigger search/filter
+        ccInput.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', keyCode:13, bubbles:true}));
+        ccInput.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', keyCode:13, bubbles:true}));
+        await delay(800);
+
+        // Find the radio button by checking parent container text for country name + code
+        var allRadios = Array.from(document.querySelectorAll('input[type="radio"]')).filter(function(r){
+            var rect = r.getBoundingClientRect();
+            return rect.height > 0 && rect.width > 0;
+        });
+
+        var targetRadio = allRadios.find(function(r){
+            var closest = r.closest('div[role="option"], div[class*="option"]');
+            if(!closest) return false;
+            var text = closest.textContent.toLowerCase();
+            return text.includes(desiredCountry.toLowerCase());
+        });
+
+        if (targetRadio) {
+            targetRadio.click();
+            targetRadio.dispatchEvent(new Event('change', {bubbles:true}));
+            filled++;
+            fillState.filledElements.add(ccInput);
+            console.log('[WD] Phone country set:', desiredCountry);
+            await delay(200);
+            return true;
+        }
+
+        console.log('[WD] Phone country code not found:', desiredCountry);
+        document.body.click();
+        return false;
+    }
+
+    await fillPhoneCountryCode(phoneCountryCode);
+    await delay(200);
+
+    // ── 3. COUNTRY / TERRITORY DROPDOWN ──────────────────────────
+    // Similar to Greenhouse: mousedown+mouseup+click on control, then search/filter
+    async function fillCountrySelect(desiredCountry) {
+        var countrySelect = document.querySelector('#country--country, [aria-label*="Country"], [aria-label*="Territory"]');
+        if (!countrySelect || fillState.filledElements.has(countrySelect)) return false;
+
+        // If no specific country, use the one from profile
+        if (!desiredCountry) desiredCountry = country || 'India';
+
+        // Find the select control/container
+        var cont = countrySelect.tagName === 'SELECT' ? countrySelect
+                 : countrySelect.closest('[class*="select"], div[role="combobox"], div[role="button"]');
+        if (!cont) return false;
+
+        var control = cont.querySelector('[class*="select__control"]') || cont;
+        var inp4 = cont.querySelector('input');
+        if (!inp4) return false;
+
+        var rect = control.getBoundingClientRect();
+        control.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true, view:window, clientX:rect.left+10, clientY:rect.top+10}));
+        control.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, cancelable:true, view:window, clientX:rect.left+10, clientY:rect.top+10}));
+        control.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, view:window, clientX:rect.left+10, clientY:rect.top+10}));
+        await delay(400);
+
+        // Type to search
+        var ns4 = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        inp4.focus();
+        var cur4 = '';
+        for (var ci5 = 0; ci5 < desiredCountry.length; ci5++) {
+            var ch5 = desiredCountry[ci5];
+            var kc5 = ch5.charCodeAt(0);
+            cur4 += ch5;
+            inp4.dispatchEvent(new KeyboardEvent('keydown', {key:ch5, keyCode:kc5, which:kc5, bubbles:true}));
+            if (ns4) ns4.call(inp4, cur4); else inp4.value = cur4;
+            inp4.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:ch5}));
+            inp4.dispatchEvent(new KeyboardEvent('keyup', {key:ch5, keyCode:kc5, which:kc5, bubbles:true}));
+            await delay(40);
+        }
+        await delay(600);
+
+        var opts4 = Array.from(document.querySelectorAll('[class*="select__option"], [role="option"]')).filter(function(o) {
+            var r = o.getBoundingClientRect(); return r.width > 0 && r.height > 0;
+        });
+        if (opts4.length === 0) {
+            console.log('[WD] No country options');
+            document.body.click();
+            return false;
+        }
+
+        var desired4 = desiredCountry.toLowerCase();
+        var target4 = opts4.find(function(o) { return o.textContent.trim().toLowerCase() === desired4; })
+                   || opts4.find(function(o) { return o.textContent.trim().toLowerCase().startsWith(desired4); })
+                   || opts4.find(function(o) { return o.textContent.trim().toLowerCase().includes(desired4); });
+        if (target4) {
+            target4.click();
+            filled++;
+            fillState.filledElements.add(cont);
+            console.log('[WD] Country set:', target4.textContent.trim());
+            await delay(200);
+            return true;
+        }
+        document.body.click();
+        return false;
+    }
+
+    await fillCountrySelect(country);
+    await delay(200);
+
+    // ── 4. PREVIOUS WORKER RADIO BUTTON ──────────────────────────
+    // candidateIsPreviousWorker: true=Yes, false=No
+    var radioPreviousWorker = hasWorkedAtWorkday ? 'tv5q3' : 'tv5q4';  // tv5q3=Yes, tv5q4=No
+    var rb = document.getElementById(radioPreviousWorker);
+    if (rb && !rb.checked && !fillState.filledElements.has(rb)) {
+        rb.click();
+        rb.dispatchEvent(new Event('change', {bubbles:true}));
+        filled++;
+        fillState.filledElements.add(rb);
+        console.log('[WD] Previous worker radio:', hasWorkedAtWorkday ? 'Yes' : 'No');
+    }
+    await delay(100);
+
+    console.log('[AutoFill] fillWorkday done, filled:', filled);
+    return filled;
+}
+async function fillLinkedIn(profile) {
+    console.log('[AutoFill] fillLinkedIn start');
+    var p = profile || {};
+    var filled = 0;
+
+    var firstName = (p.first_name) || (p.personal && p.personal.first_name) || '';
+    var lastName  = (p.last_name)  || (p.personal && p.personal.last_name)  || '';
+    var email     = (p.contact && p.contact.email) || p.email || '';
+    var phone     = (p.contact && p.contact.phone) || p.phone || '';
+    var city      = ((p.contact && p.contact.city) || p.city || '').split(',')[0].trim();
+
+    var fieldMap = [
+        { selector: 'input[name="firstName"], input[id*="first"][type="text"]', value: firstName },
+        { selector: 'input[name="lastName"], input[id*="last"][type="text"]', value: lastName },
+        { selector: 'input[name="email"], input[type="email"]', value: email },
+        { selector: 'input[name="phone"], input[type="tel"]', value: phone },
+        { selector: 'input[name="city"], input[placeholder*="City"]', value: city }
+    ];
+
+    for (var fi = 0; fi < fieldMap.length; fi++) {
+        var fm = fieldMap[fi];
+        if (!fm.value) continue;
+        var el = document.querySelector(fm.selector);
+        if (el && isFieldFillable(el) && !fillState.filledElements.has(el)) {
+            fillField(el, fm.value);
+            fillState.filledElements.add(el);
+            filled++;
+        }
+    }
+
+    // Generic fallback
+    var allInps = Array.from(document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], textarea'));
+    for (var i = 0; i < allInps.length; i++) {
+        var inp = allInps[i];
+        if (!isFieldFillable(inp) || fillState.filledElements.has(inp)) continue;
+        var lbl = getLabelForElement(inp).toLowerCase();
+        var val = '';
+        if (/first.?name/i.test(lbl)) val = firstName;
+        else if (/last.?name/i.test(lbl)) val = lastName;
+        else if (/\bemail\b/i.test(lbl)) val = email;
+        else if (/\bphone\b|\bmobile\b/i.test(lbl)) val = phone;
+        else if (/\bcity\b|\blocation\b/i.test(lbl)) val = city;
+        if (val) { fillField(inp, val); fillState.filledElements.add(inp); filled++; }
+    }
+
+    if (AUTO_FILL_CONFIG.AI_QUESTIONS_ENABLED) {
+        var textareas = Array.from(document.querySelectorAll('textarea'));
+        for (var ti = 0; ti < textareas.length; ti++) {
+            var ta = textareas[ti];
+            if (!isFieldFillable(ta) || fillState.filledElements.has(ta)) continue;
+            var taLabel = getLabelForElement(ta);
+            if (taLabel && isAIQuestion(taLabel)) {
+                var answer = await getAIAnswer(taLabel, profile);
+                if (answer) { fillField(ta, answer); fillState.filledElements.add(ta); filled++; }
+            }
+        }
+    }
+
+    console.log('[AutoFill] fillLinkedIn done, filled:', filled);
+    return filled;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 7. PLATFORM DISPATCHER
+// ══════════════════════════════════════════════════════════════════
+async function applyPlatformFixes(platform, profile) {
+    console.log('[AutoFill] applyPlatformFixes — platform:', platform);
+    fillState.isFilling = true;
+    fillState.filledElements = new Set(); // reset per-fill
+
+    var filled = 0;
+    try {
+        switch (platform) {
+            case 'workday':
+                filled = await fillWorkday(profile);
+                break;
+            case 'greenhouse':
+                filled = await fillGreenhouse(profile);
+                break;
+            case 'lever':
+                filled = await fillLever(profile);
+                break;
+            case 'ashby':
+                filled = await fillAshby(profile);
+                break;
+            case 'googleforms':
+                filled = await fillGoogleForms(profile);
+                break;
+            case 'smartrecruiters':
+                filled = await fillSmartRecruiters(profile);
+                break;
+            case 'linkedin':
+                filled = await fillLinkedIn(profile);
+                break;
+            case 'indeed':
+                filled = await fillGeneric(profile);
+                break;
+            case 'generic':
+            default:
+                filled = await fillGeneric(profile);
+                break;
+        }
+        var msg = '[AutoFill] Done — platform: ' + platform + ', fields filled: ' + filled;
+        console.log(msg);
+        showToast('AutoFill complete: ' + filled + ' field(s) filled.', 'success');
+    } catch (err) {
+        console.error('[AutoFill] applyPlatformFixes error:', err);
+        showToast('AutoFill error: ' + err.message, 'error');
+    } finally {
+        fillState.isFilling = false;
+    }
+    return filled;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 8. MESSAGE LISTENER
+// ══════════════════════════════════════════════════════════════════
+chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+    if (!message || !message.type) return false;
+
+    // Handle all autofill trigger types
+    // PERFORM_AUTO_FILL = from background.js RUN_AUTOFILL (main flow)
+    // AUTOFILL_START / AUTO_FILL_FORM = legacy / direct calls
+    if (message.type === 'PERFORM_AUTO_FILL' ||
+        message.type === 'AUTOFILL_START' ||
+        message.type === 'AUTO_FILL_FORM') {
+
+        console.log('[AutoFill] Fill request:', message.type);
+
+        if (fillState.isFilling) {
+            sendResponse({ success: false, error: 'Already filling' });
+            return false;
+        }
+
+        // PERFORM_AUTO_FILL sends userProfile; others send profile/data
+        var profile = message.userProfile || message.profile || message.data || null;
+        var platform = message.platform || detectPlatform();
+
+        // Update backend URL if provided
+        if (message.backendUrl) {
+            AUTO_FILL_CONFIG.BACKEND_URL = message.backendUrl;
+            fillState.backendUrl = message.backendUrl;
+        }
+
+        fillState.platform = platform;
+        fillState.userProfile = profile;
+
+        function doFill(p) {
+            console.log('[AutoFill] Starting — platform:', platform,
+                        '| name:', (p && (p.name || p.first_name)) || 'unknown');
+            showToast('AutoFill starting...', 'success');
+            applyPlatformFixes(platform, p)
+                .then(function(filled) {
+                    try {
+                        sendResponse({
+                            success: true,
+                            filled: filled,
+                            result: { filledCount: filled, skippedCount: 0 }
+                        });
+                    } catch(e) {}
+                })
+                .catch(function(err) {
+                    try { sendResponse({ success: false, error: err.message }); } catch(e) {}
+                });
+        }
+
+        if (!profile) {
+            // Try loading from chrome.storage (background may not pass profile)
+            try {
+                chrome.storage.local.get(['userProfile'], function(r) {
+                    var sp = r && r.userProfile;
+                    if (!sp) {
+                        sendResponse({
+                            success: false,
+                            error: 'No profile loaded. Please upload your resume first.'
+                        });
+                        return;
+                    }
+                    fillState.userProfile = sp;
+                    doFill(sp);
+                });
+                return true;
+            } catch(e2) {
+                sendResponse({ success: false, error: 'No profile: ' + e2.message });
+                return false;
+            }
+        }
+
+        doFill(profile);
+        return true;
+    }
+
+    if (message.type === 'GET_FILL_STATE') {
+        sendResponse({
+            success: true,
+            isFilling: fillState.isFilling,
+            platform: fillState.platform || detectPlatform()
+        });
+        return false;
+    }
+
+    if (message.type === 'DETECT_PLATFORM') {
+        sendResponse({ success: true, platform: detectPlatform() });
+        return false;
+    }
+
+    if (message.type === 'PING') {
+        sendResponse({ alive: true, platform: detectPlatform() });
+        return false;
+    }
+
+    return false;
+});
+
+console.log('[AutoFill] content script initialized — platform:', detectPlatform());
+
+} // end else (window.__autoFillInitialized guard)

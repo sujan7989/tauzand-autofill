@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Apply at Google – Software Engineer Intern – Live Extension Test</title>
+<meta property="og:site_name" content="Google">
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 700px; margin: 40px auto; padding: 20px; background: #f5f5f5; }
+  h1 { color: #1a73e8; }
+  .form-group { margin: 16px 0; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; color: #333; }
+  input, textarea, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+  textarea { min-height: 120px; }
+  .section { background: white; padding: 24px; border-radius: 10px; margin: 20px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  h2 { color: #333; border-bottom: 2px solid #1a73e8; padding-bottom: 8px; }
+  .result-box { background: #e8f5e9; border: 1px solid #4caf50; padding: 12px; border-radius: 6px; margin-top: 12px; display: none; }
+  button.submit { background: #1a73e8; color: white; padding: 12px 32px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<h1>Apply for this Job — Google Software Engineer Intern</h1>
+<p>This is a <strong>live test page</strong> for the Tauzand AutoFill extension. Load this in Chrome with the extension installed, then click <strong>Scan Current Page</strong> and <strong>Autofill</strong>.</p>
+
+<!-- ═══ FORM 1: Standard inputs with name/id ═══════════════════════════════ -->
+<div class="section">
+  <h2>Section 1 — Personal Information (standard name/id attributes)</h2>
+  <form id="application-form" action="/apply" method="post">
+
+    <div class="form-group">
+      <label for="first_name">First Name *</label>
+      <input type="text" id="first_name" name="first_name" autocomplete="given-name" placeholder="First name">
+    </div>
+
+    <div class="form-group">
+      <label for="last_name">Last Name *</label>
+      <input type="text" id="last_name" name="last_name" autocomplete="family-name" placeholder="Last name">
+    </div>
+
+    <div class="form-group">
+      <label for="email">Email Address *</label>
+      <input type="email" id="email" name="email" autocomplete="email" placeholder="your@email.com">
+    </div>
+
+    <div class="form-group">
+      <label for="phone">Phone Number</label>
+      <input type="tel" id="phone" name="phone" autocomplete="tel" placeholder="+1 (555) 000-0000">
+    </div>
+
+    <div class="form-group">
+      <label for="city">City / Location</label>
+      <input type="text" id="city" name="city" placeholder="New York">
+    </div>
+
+    <div class="form-group">
+      <label for="linkedin_url">LinkedIn Profile URL</label>
+      <input type="url" id="linkedin_url" name="linkedin_url" placeholder="https://linkedin.com/in/yourprofile">
+    </div>
+
+    <div class="form-group">
+      <label for="github_url">GitHub Profile URL</label>
+      <input type="url" id="github_url" name="github_url" placeholder="https://github.com/yourprofile">
+    </div>
+
+    <div class="form-group">
+      <label for="country">Country</label>
+      <select id="country" name="country" autocomplete="country">
+        <option value="">Select country</option>
+        <option value="US">United States</option>
+        <option value="IN">India</option>
+        <option value="GB">United Kingdom</option>
+        <option value="CA">Canada</option>
+        <option value="AU">Australia</option>
+      </select>
+    </div>
+
+  </form>
+</div>
+
+<!-- ═══ FORM 2: Greenhouse bracket notation ═════════════════════════════════ -->
+<div class="section">
+  <h2>Section 2 — Greenhouse Style (bracket notation)</h2>
+  <form id="greenhouse_form">
+
+    <div class="form-group">
+      <label for="gh_first">First Name</label>
+      <input type="text" id="gh_first" name="job_application[first_name]" autocomplete="given-name">
+    </div>
+
+    <div class="form-group">
+      <label for="gh_last">Last Name</label>
+      <input type="text" id="gh_last" name="job_application[last_name]" autocomplete="family-name">
+    </div>
+
+    <div class="form-group">
+      <label for="gh_email">Email</label>
+      <input type="email" id="gh_email" name="job_application[email]" autocomplete="email">
+    </div>
+
+    <div class="form-group">
+      <label for="gh_phone">Phone</label>
+      <input type="tel" id="gh_phone" name="job_application[phone_number]" autocomplete="tel">
+    </div>
+
+  </form>
+</div>
+
+<!-- ═══ FORM 3: aria-label only (Workday style) ═════════════════════════════ -->
+<div class="section">
+  <h2>Section 3 — Workday Style (aria-label, no id/name)</h2>
+  <form id="workday_form">
+
+    <div class="form-group">
+      <input type="text" aria-label="First Name" placeholder="First Name">
+    </div>
+
+    <div class="form-group">
+      <input type="text" aria-label="Last Name" placeholder="Last Name">
+    </div>
+
+    <div class="form-group">
+      <input type="email" aria-label="Email" placeholder="Email">
+    </div>
+
+    <div class="form-group">
+      <input type="tel" aria-label="Phone" placeholder="Phone">
+    </div>
+
+  </form>
+</div>
+
+<!-- ═══ AI Questions ═════════════════════════════════════════════════════════ -->
+<div class="section">
+  <h2>Section 4 — AI Open-Ended Questions</h2>
+  <form id="ai_questions_form">
+
+    <div class="form-group">
+      <label for="cover_letter">Cover Letter *</label>
+      <textarea id="cover_letter" name="cover_letter" placeholder="Write your cover letter here..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="why_company">Why do you want to work at Google? *</label>
+      <textarea id="why_company" name="why_company" placeholder="Tell us why you're interested..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="about_yourself">Tell us about yourself</label>
+      <textarea id="about_yourself" name="about_yourself" placeholder="Introduce yourself..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="describe_project">Describe a project you're proud of</label>
+      <textarea id="describe_project" name="describe_project" placeholder="Tell us about a project..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="strengths">What are your key strengths?</label>
+      <textarea id="strengths" name="strengths" placeholder="Describe your strengths..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="additional_info">Additional Information</label>
+      <textarea id="additional_info" name="additional_info" placeholder="Anything else you'd like us to know?"></textarea>
+    </div>
+
+  </form>
+</div>
+
+<!-- ═══ Orphan inputs (no form tag — React portal style) ════════════════════ -->
+<div class="section">
+  <h2>Section 5 — React Portal Style (inputs outside any form tag)</h2>
+
+  <div class="form-group">
+    <label>Portfolio / Website URL</label>
+    <input type="url" name="portfolio" id="portfolio" placeholder="https://yourportfolio.com">
+  </div>
+
+  <div class="form-group">
+    <label>Years of Experience</label>
+    <input type="text" name="years_experience" id="years_experience" placeholder="3">
+  </div>
+
+</div>
+
+<button class="submit" onclick="checkResults()">Check Filled Fields</button>
+
+<div class="result-box" id="result-box">
+  <h3>✅ Fields Filled by Extension:</h3>
+  <div id="result-content"></div>
+</div>
+
+<script>
+function checkResults() {
+  const inputs = document.querySelectorAll('input, textarea, select');
+  const filled = [];
+  const empty = [];
+  inputs.forEach(function(el) {
+    const label = el.getAttribute('aria-label') ||
+      (el.id ? (document.querySelector('label[for="' + el.id + '"]') || {}).textContent : '') ||
+      el.name || el.placeholder || 'unknown';
+    const val = el.value || el.textContent || '';
+    if (val.trim().length > 0) {
+      filled.push({ label: label.trim(), value: val.trim().substring(0, 60) });
+    } else {
+      empty.push(label.trim());
+    }
+  });
+
+  const box = document.getElementById('result-box');
+  const content = document.getElementById('result-content');
+  box.style.display = 'block';
+
+  let html = '<p><strong>' + filled.length + ' filled, ' + empty.length + ' empty</strong></p>';
+  html += '<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:13px">';
+  html += '<tr style="background:#4caf50;color:white"><th>Field</th><th>Value</th></tr>';
+  filled.forEach(function(f) {
+    html += '<tr><td>' + f.label + '</td><td>' + f.value + '</td></tr>';
+  });
+  html += '</table>';
+
+  if (empty.length > 0) {
+    html += '<p style="margin-top:12px"><strong style="color:#f44336">Empty fields:</strong> ' + empty.join(', ') + '</p>';
+  }
+  content.innerHTML = html;
+}
+</script>
+
+</body>
+</html>
