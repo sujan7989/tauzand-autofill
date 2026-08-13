@@ -1,5 +1,37 @@
 # Tauzand AutoFill Assistant
 
+AI-powered Chrome Extension for universal job application autofill.
+
+## Deploy Backend (One Click)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/sujan7989/tauzand-autofill)
+
+After clicking the button, add these 4 environment variables in Render dashboard:
+- `SUPABASE_URL`
+- `SUPABASE_KEY`
+- `SUPABASE_SERVICE_KEY`
+- `NVIDIA_NIM_API_KEY`
+
+## Install Extension
+
+1. Open Chrome → `chrome://extensions/`
+2. Enable **Developer mode**
+3. Click **Load unpacked** → select the `extension/` folder
+4. Extension is ready — no backend setup needed
+
+## Local Development
+
+```bash
+pip install -r requirements.txt
+python main.py
+```
+Then change backend URL in extension Settings to `http://localhost:5000`
+
+## Supported Platforms
+- Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Keka
+- Any unknown job site via Universal Engine
+
+
 AI-powered Chrome Extension + Flask backend that automatically fills job application forms from your uploaded resume.
 
 ---
