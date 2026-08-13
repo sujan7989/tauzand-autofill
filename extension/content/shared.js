@@ -7,7 +7,14 @@ if (window.__sharedHelpersInitialized) {
 window.__sharedHelpersInitialized = true;
 
 // "" CONFIG """"""""""""""""""""""""""""""""""""""""""""""""""""
-window.AUTOFILL_BACKEND_URL = 'http://localhost:5000';
+// Backend URL priority:
+//   1. User-saved custom URL from chrome.storage (set in popup Settings)
+//   2. RENDER_BACKEND_URL if deployed to Render (set at build time via env)
+//   3. localhost:5000 (local development fallback)
+//
+// The extension background.js updates AUTOFILL_BACKEND_URL at runtime
+// from chrome.storage so this default only applies on first load.
+window.AUTOFILL_BACKEND_URL = 'https://tauzand-autofill-backend.onrender.com';
 
 // "" AI QUESTION PATTERNS """"""""""""""""""""""""""""""""""""""
 window.AI_QUESTION_PATTERNS = [

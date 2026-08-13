@@ -1,9 +1,12 @@
 // background.js - Service Worker for Tauzand AutoFill Assistant
 'use strict';
 
+const RENDER_BACKEND_URL = 'https://tauzand-autofill-backend.onrender.com';
+const LOCAL_BACKEND_URL  = 'http://localhost:5000';
+
 const state = {
     userProfile: null,
-    settings: { backendUrl: 'http://localhost:5000' },
+    settings: { backendUrl: RENDER_BACKEND_URL },
     readyTabs: new Set(),
     _activeFrameId: null
 };
@@ -12,7 +15,38 @@ const state = {
 chrome.storage.local.get(['userProfile', 'backendUrl'], function(r) {
     if (r.userProfile) state.userProfile = r.userProfile;
     if (r.backendUrl)  state.settings.backendUrl = r.backendUrl;
-    console.log('[BG] startup profile=' + !!state.userProfile);
+    else               state.settings.backendUrl = RENDER_BACKEND_URL;
+    console.log('[BG] startup profile=' + !!state.userProfile + ' backend=' + state.settings.backendUrl);
+    // Save default URL if never saved
+    if (!r.backendUrl) chrome.storage.local.set({ backendUrl: RENDER_BACKEND_URL });
+    // Start keep-alive ping to prevent Render free tier from sleeping
+    startKeepAlive();
+});
+
+// ─────────────────────────────────────────────────────────────
+// KEEP-ALIVE: Ping Render every 10 minutes so it never sleeps
+// Render free tier sleeps after 15 min of no requests.
+// ─────────────────────────────────────────────────────────────
+function startKeepAlive() {
+    // Ping immediately on startup
+    pingBackend();
+    // Then every 10 minutes
+    chrome.alarms.create('keepAlive', { periodInMinutes: 10 });
+}
+
+async function pingBackend() {
+    try {
+        const url = state.settings.backendUrl + '/api/ping';
+        const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(8000) });
+        if (r.ok) console.log('[BG] Keep-alive ping OK');
+    } catch (e) {
+        // Silently ignore — just a keep-alive, not critical
+    }
+}
+
+// Handle alarm for keep-alive
+chrome.alarms.onAlarm.addListener(function(alarm) {
+    if (alarm.name === 'keepAlive') pingBackend();
 });
 
 // Helper: fetch with timeout

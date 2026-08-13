@@ -15,7 +15,7 @@ var state = {
     },
     autofillResults: { filled: 0, skipped: 0, failed: 0, time: 0 },
     settings: {
-        backendUrl: 'http://localhost:5000',
+        backendUrl: 'https://tauzand-autofill-backend.onrender.com',
         darkMode: true,
         notifications: true
     }
@@ -139,7 +139,7 @@ async function handleResumeUpload(file) {
     var metaEl = document.getElementById('profile-meta');
     if (nameEl) nameEl.textContent = 'Parsing resume...';
     if (metaEl) metaEl.textContent = 'Please wait...';
-    var backendUrl = state.settings.backendUrl || 'http://localhost:5000';
+    var backendUrl = state.settings.backendUrl || 'https://tauzand-autofill-backend.onrender.com';
     // Check backend is reachable first
     try {
         var healthCheck = await fetch(backendUrl + '/api/health', { method: 'GET' });
@@ -645,6 +645,13 @@ function loadSettings() {
             state.settings.backendUrl = stored.backendUrl;
             var urlInput = document.getElementById('setting-backend-url');
             if (urlInput) urlInput.value = stored.backendUrl;
+        } else {
+            // First install — set Render URL as default
+            var defaultUrl = 'https://tauzand-autofill-backend.onrender.com';
+            state.settings.backendUrl = defaultUrl;
+            chrome.storage.local.set({ backendUrl: defaultUrl });
+            var urlInput = document.getElementById('setting-backend-url');
+            if (urlInput) urlInput.value = defaultUrl;
         }
         // Load new behavior settings
         ['setting-fill-mode','setting-ai-mode','setting-confidence'].forEach(function(id) {
