@@ -1,12 +1,12 @@
-# Tauzand AutoFill Assistant
+﻿# Tauzand AutoFill Assistant
 
 AI-powered Chrome Extension for universal job application autofill.
 
 ## Deploy Backend (One Click)
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/sujan7989/tauzand-autofill)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fsujan7989%2Ftauzand-autofill)
 
-After clicking the button, add these 4 environment variables in Render dashboard:
+After clicking the button, add these 4 environment variables in Railway dashboard:
 - `SUPABASE_URL`
 - `SUPABASE_KEY`
 - `SUPABASE_SERVICE_KEY`

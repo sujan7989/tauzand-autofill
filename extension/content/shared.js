@@ -1,4 +1,4 @@
-// shared.js " Shared helpers loaded on ALL job sites
+﻿// shared.js " Shared helpers loaded on ALL job sites
 // Every site-specific file (autoFill-workday.js etc.) depends on this.
 
 if (window.__sharedHelpersInitialized) {
@@ -14,7 +14,7 @@ window.__sharedHelpersInitialized = true;
 //
 // The extension background.js updates AUTOFILL_BACKEND_URL at runtime
 // from chrome.storage so this default only applies on first load.
-window.AUTOFILL_BACKEND_URL = 'https://tauzand-autofill-backend.onrender.com';
+window.AUTOFILL_BACKEND_URL = 'https://tauzand-autofill.up.railway.app';
 
 // "" AI QUESTION PATTERNS """"""""""""""""""""""""""""""""""""""
 window.AI_QUESTION_PATTERNS = [
