@@ -14,7 +14,7 @@ window.__sharedHelpersInitialized = true;
 //
 // The extension background.js updates AUTOFILL_BACKEND_URL at runtime
 // from chrome.storage so this default only applies on first load.
-window.AUTOFILL_BACKEND_URL = 'https://tauzand-autofill.up.railway.app';
+window.AUTOFILL_BACKEND_URL = 'https://tauzand-autofill.onrender.com';
 
 // "" AI QUESTION PATTERNS """"""""""""""""""""""""""""""""""""""
 window.AI_QUESTION_PATTERNS = [

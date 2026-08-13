@@ -15,7 +15,7 @@ var state = {
     },
     autofillResults: { filled: 0, skipped: 0, failed: 0, time: 0 },
     settings: {
-        backendUrl: 'https://tauzand-autofill.up.railway.app',
+        backendUrl: 'https://tauzand-autofill.onrender.com',
         darkMode: true,
         notifications: true
     }
@@ -139,7 +139,7 @@ async function handleResumeUpload(file) {
     var metaEl = document.getElementById('profile-meta');
     if (nameEl) nameEl.textContent = 'Parsing resume...';
     if (metaEl) metaEl.textContent = 'Please wait...';
-    var backendUrl = state.settings.backendUrl || 'https://tauzand-autofill.up.railway.app';
+    var backendUrl = state.settings.backendUrl || 'https://tauzand-autofill.onrender.com';
     // Check backend is reachable first
     try {
         var healthCheck = await fetch(backendUrl + '/api/health', { method: 'GET' });
@@ -647,7 +647,7 @@ function loadSettings() {
             if (urlInput) urlInput.value = stored.backendUrl;
         } else {
             // First install — set Render URL as default
-            var defaultUrl = 'https://tauzand-autofill.up.railway.app';
+            var defaultUrl = 'https://tauzand-autofill.onrender.com';
             state.settings.backendUrl = defaultUrl;
             chrome.storage.local.set({ backendUrl: defaultUrl });
             var urlInput = document.getElementById('setting-backend-url');

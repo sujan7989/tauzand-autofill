@@ -1,7 +1,7 @@
 ﻿// background.js - Service Worker for Tauzand AutoFill Assistant
 'use strict';
 
-const RENDER_BACKEND_URL = 'https://tauzand-autofill.up.railway.app';
+const RENDER_BACKEND_URL = 'https://tauzand-autofill.onrender.com';
 const LOCAL_BACKEND_URL  = 'http://localhost:5000';
 
 const state = {
