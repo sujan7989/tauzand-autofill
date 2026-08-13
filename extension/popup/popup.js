@@ -163,7 +163,18 @@ async function handleResumeUpload(file) {
         }
         var data = await resp.json();
         var profile = data.data || data.profile || data;
-        if (profile && (profile.first_name || profile.name || profile.email)) {
+
+        // Accept profile if we got ANY meaningful data from the server
+        // The parser may return name/email/skills even if first_name is empty
+        var hasAnyData = profile && (
+            profile.first_name || profile.name || profile.email ||
+            profile.phone || profile.skills ||
+            (profile.contact && (profile.contact.email || profile.contact.phone)) ||
+            (profile.personal && profile.personal.first_name) ||
+            profile.summary || profile.experience || profile.education
+        );
+
+        if (hasAnyData) {
             state.profile = profile;
             await chrome.storage.local.set({ userProfile: profile });
             chrome.runtime.sendMessage({ type: 'SET_USER_PROFILE', profile: profile }).catch(function() {});

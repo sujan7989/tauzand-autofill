@@ -39,6 +39,19 @@ def upload_resume():
                 [k for k in parsed_data.keys() if k != 'raw_text']
             )
 
+            # Ensure first_name / last_name are always present at top level
+            # (some parse paths only return 'name')
+            if not parsed_data.get('first_name') and parsed_data.get('name'):
+                parts = parsed_data['name'].split()
+                parsed_data['first_name'] = parts[0] if parts else ''
+                parsed_data['last_name']  = ' '.join(parts[1:]) if len(parts) > 1 else ''
+
+            # Ensure email is always at top level (may be nested in contact)
+            if not parsed_data.get('email'):
+                contact = parsed_data.get('contact', {})
+                if contact.get('email'):
+                    parsed_data['email'] = contact['email']
+
             return jsonify({
                 "success": True,
                 "data": parsed_data
