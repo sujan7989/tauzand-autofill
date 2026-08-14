@@ -106,20 +106,36 @@ async function fillLever(profile) {
     for (var ci = 0; ci < customInputs.length; ci++) {
         var cInp = customInputs[ci];
         var cLbl = window.getLabelForElement(cInp);
+
+        // Also try: nearby paragraph/div text which Lever uses for question labels
+        if (!cLbl || cLbl.length < 3) {
+            var par = cInp.parentElement;
+            for (var pd = 0; pd < 6 && par; pd++) {
+                var paras = par.querySelectorAll('p, div[class*="question"], label, h3, h4, span[class*="label"], div[class*="label"]');
+                for (var pi = 0; pi < paras.length; pi++) {
+                    if (!paras[pi].contains(cInp)) {
+                        var ptxt = (paras[pi].innerText || paras[pi].textContent || '').trim().replace(/\s+/g, ' ');
+                        if (ptxt.length > 3 && ptxt.length < 200) { cLbl = ptxt; break; }
+                    }
+                }
+                if (cLbl && cLbl.length > 3) break;
+                par = par.parentElement;
+            }
+        }
         if (!cLbl) continue;
-        var cLblLow = cLbl.toLowerCase();
+
+        var cLblLow = cLbl.toLowerCase().trim();
         var cVal = '';
-        var cLblLow = cLbl.toLowerCase();
 
         // ── Deterministic answers for factual/number fields (no AI needed) ──
-        if (/current.*salary|current.*ctc|last.*drawn|current.*package/i.test(cLblLow)) {
+        if (/current.*salary|current.*ctc|last.*drawn|current.*package|salary.*lakhs|in lakhs per/i.test(cLblLow)) {
             var exp2 = profile.experience || [];
             cVal = exp2.length > 0 ? (profile.current_salary || '0') : '0';
         } else if (/expected.*salary|expected.*ctc|desired.*salary|expected.*package/i.test(cLblLow)) {
             cVal = profile.expected_salary || profile.salary_expectation || '0';
-        } else if (/notice.*period|serving.*notice/i.test(cLblLow)) {
-            cVal = 'Immediate';
-        } else if (/years.*experience|experience.*years|total.*exp|work.*exp/i.test(cLblLow)) {
+        } else if (/notice.*period|serving.*notice|notice.*days|days.*notice|immediately available|mention.*0.*immediately/i.test(cLblLow)) {
+            cVal = '0';
+        } else if (/years.*experience|experience.*years|total.*exp|work.*exp|how many years/i.test(cLblLow)) {
             var expList = profile.experience || [];
             cVal = expList.length > 0 ? String(expList.length) : '0';
         } else if (/\bphone\b|\bmobile\b/i.test(cLblLow)) {
@@ -130,12 +146,16 @@ async function fillLever(profile) {
             cVal = (profile.social && profile.social.linkedin) || profile.linkedin || '';
         } else if (/github/i.test(cLblLow)) {
             cVal = (profile.social && profile.social.github) || profile.github || '';
-        } else if (/portfolio|website/i.test(cLblLow)) {
+        } else if (/portfolio|personal.*website/i.test(cLblLow)) {
             cVal = (profile.social && profile.social.portfolio) || profile.portfolio || '';
         } else if (/\bskills?\b/i.test(cLblLow)) {
             cVal = (profile.skills || []).slice(0, 8).join(', ');
+        } else if (/willing.*relocate|relocat/i.test(cLblLow)) {
+            cVal = 'Yes';
+        } else if (/how.*hear|source|referr/i.test(cLblLow)) {
+            cVal = 'LinkedIn';
         } else {
-            // Use AI for open-ended questions only
+            // Use AI ONLY for genuinely open-ended questions
             var aiAns2 = await window.getAIAnswer(cLbl, profile);
             if (aiAns2) cVal = aiAns2;
         }
