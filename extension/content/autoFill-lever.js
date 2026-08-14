@@ -109,9 +109,36 @@ async function fillLever(profile) {
         if (!cLbl) continue;
         var cLblLow = cLbl.toLowerCase();
         var cVal = '';
-        // Use AI for ALL custom questions - generates personalized resume-based answers
-        var aiAns2 = await window.getAIAnswer(cLbl, profile);
-        if (aiAns2) cVal = aiAns2;
+        var cLblLow = cLbl.toLowerCase();
+
+        // ── Deterministic answers for factual/number fields (no AI needed) ──
+        if (/current.*salary|current.*ctc|last.*drawn|current.*package/i.test(cLblLow)) {
+            var exp2 = profile.experience || [];
+            cVal = exp2.length > 0 ? (profile.current_salary || '0') : '0';
+        } else if (/expected.*salary|expected.*ctc|desired.*salary|expected.*package/i.test(cLblLow)) {
+            cVal = profile.expected_salary || profile.salary_expectation || '0';
+        } else if (/notice.*period|serving.*notice/i.test(cLblLow)) {
+            cVal = 'Immediate';
+        } else if (/years.*experience|experience.*years|total.*exp|work.*exp/i.test(cLblLow)) {
+            var expList = profile.experience || [];
+            cVal = expList.length > 0 ? String(expList.length) : '0';
+        } else if (/\bphone\b|\bmobile\b/i.test(cLblLow)) {
+            cVal = (profile.contact && profile.contact.phone) || profile.phone || '';
+        } else if (/\bcity\b|\blocation\b/i.test(cLblLow)) {
+            cVal = ((profile.contact && profile.contact.city) || profile.city || '').split(',')[0].trim();
+        } else if (/linkedin/i.test(cLblLow)) {
+            cVal = (profile.social && profile.social.linkedin) || profile.linkedin || '';
+        } else if (/github/i.test(cLblLow)) {
+            cVal = (profile.social && profile.social.github) || profile.github || '';
+        } else if (/portfolio|website/i.test(cLblLow)) {
+            cVal = (profile.social && profile.social.portfolio) || profile.portfolio || '';
+        } else if (/\bskills?\b/i.test(cLblLow)) {
+            cVal = (profile.skills || []).slice(0, 8).join(', ');
+        } else {
+            // Use AI for open-ended questions only
+            var aiAns2 = await window.getAIAnswer(cLbl, profile);
+            if (aiAns2) cVal = aiAns2;
+        }
         if (cVal && window.fillField(cInp, cVal)) {
             leverState.filledElements.add(cInp); filled++;
             console.log('[Lever] Custom "' + cLbl.substring(0,40) + '" = "' + cVal.substring(0,30) + '"');
