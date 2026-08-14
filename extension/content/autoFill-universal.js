@@ -1,4 +1,4 @@
-﻿// autoFill-universal.js
+// autoFill-universal.js
 // Universal autofill for ANY job portal site worldwide
 // Handles: text, email, tel, number, select, radio, checkbox, date, textarea,
 //          React/Angular/Vue custom dropdowns, shadow DOM, Kendo, MUI, Ant Design, etc.
