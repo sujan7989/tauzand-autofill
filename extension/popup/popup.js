@@ -126,9 +126,22 @@ function updateProfileUI(profile) {
 
     if (nameEl) nameEl.textContent = name;
     if (metaEl) {
-        var skills = profile.skills ? profile.skills.length : 0;
-        var exp = profile.experience ? profile.experience.length : 0;
-        metaEl.textContent = skills + ' skills | ' + exp + ' experience';
+        // Skills can be at root level or nested
+        var skillsArr = profile.skills || (profile.personal && profile.personal.skills) || [];
+        var expArr    = profile.experience || [];
+        var eduArr    = profile.education  || [];
+        var skills = Array.isArray(skillsArr) ? skillsArr.length : 0;
+        var exp    = Array.isArray(expArr)    ? expArr.length    : 0;
+        var edu    = Array.isArray(eduArr)    ? eduArr.length    : 0;
+
+        if (skills > 0 || exp > 0) {
+            metaEl.textContent = skills + ' skills | ' + exp + ' experience';
+        } else if (profile.email || (profile.contact && profile.contact.email)) {
+            // Profile has contact info even if skills/exp not parsed
+            metaEl.textContent = 'Resume loaded — ' + (profile.email || profile.contact.email);
+        } else {
+            metaEl.textContent = 'Resume loaded';
+        }
     }
     if (settingProfile) settingProfile.textContent = name;
 }

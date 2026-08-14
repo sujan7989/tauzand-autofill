@@ -150,6 +150,13 @@ function getLabel(el) {
     if (!el) return '';
     var t = '';
 
+    // Special early check: if name= contains countrycode/dialcode, return that directly
+    // This prevents the "Mobile Phone" label bleeding onto the country code SELECT
+    var nm0 = (el.name||'').toLowerCase();
+    if (nm0.includes('countrycode') || nm0.includes('dialcode') || nm0.includes('isd')) {
+        return 'Country Code';
+    }
+
     // 1. Standard label[for]
     if (el.id) {
         var lf = document.querySelector('label[for="'+el.id+'"]');
@@ -190,7 +197,11 @@ function getLabel(el) {
                 var lEl = lblEls[li];
                 if (!lEl.contains(el)) {
                     var txt = (lEl.innerText||lEl.textContent||'').trim().replace(/\s+/g,' ').replace(/[*:]+$/,'').trim();
-                    if (txt.length > 1 && txt.length < 120) { t = txt; break; }
+                    // Skip error messages / validation text / very long descriptions
+                    if (txt.length > 1 && txt.length < 120 &&
+                        !/unable to process|invalid|error|failed|not valid|please/i.test(txt)) {
+                        t = txt; break;
+                    }
                 }
             }
             if (t) break;
@@ -199,12 +210,22 @@ function getLabel(el) {
         }
     }
 
-    // 6. Check immediate siblings (for radio/checkbox: label is often next sibling)
+    // 6. Check immediate siblings — ONLY for radio/checkbox where label follows input
+    // Restrict to <label> or <span> siblings only (not <div> which may contain other fields)
     if (!t) {
+        var type6 = (el.type||'').toLowerCase();
+        var isInlineControl = (type6 === 'radio' || type6 === 'checkbox');
         var next = el.nextElementSibling;
-        if (next) {
-            var ntxt = (next.innerText||next.textContent||'').trim().replace(/\s+/g,' ');
-            if (ntxt.length > 1 && ntxt.length < 80) t = ntxt;
+        if (next && isInlineControl) {
+            var nextTag = (next.tagName||'').toUpperCase();
+            // Only use label/span siblings — skip divs and other inputs
+            if (nextTag === 'LABEL' || nextTag === 'SPAN') {
+                var ntxt = (next.innerText||next.textContent||'').trim().replace(/\s+/g,' ');
+                // Reject if it looks like an error message (too long) or contains 'error'/'invalid'
+                if (ntxt.length > 1 && ntxt.length < 60 && !/error|invalid|required|please/i.test(ntxt)) {
+                    t = ntxt;
+                }
+            }
         }
     }
     // Also check: label that immediately precedes input's parent
