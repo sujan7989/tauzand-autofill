@@ -1,4 +1,4 @@
-﻿// popup.js - Tauzand AutoFill Assistant Popup
+// popup.js - Tauzand AutoFill Assistant Popup
 
 // "" State """""""""""""""""""""""""""""""""""""""""""""""""""""
 var state = {
@@ -138,7 +138,7 @@ function updateProfileUI(profile) {
             metaEl.textContent = skills + ' skills | ' + exp + ' experience';
         } else if (profile.email || (profile.contact && profile.contact.email)) {
             // Profile has contact info even if skills/exp not parsed
-            metaEl.textContent = 'Resume loaded — ' + (profile.email || profile.contact.email);
+            metaEl.textContent = 'Resume loaded - ' + (profile.email || profile.contact.email);
         } else {
             metaEl.textContent = 'Resume loaded';
         }
@@ -361,8 +361,8 @@ function showAnalysisScreen() {
         // Don't show 0% â€” show "Auto" with a positive message
         if (confidence) confidence.textContent = 'Auto';
         if (badge) { badge.textContent = 'Smart Fill Ready'; badge.className = 'confidence-badge confidence-high'; }
-        if (detected) detected.textContent = 'â€”';
-        if (missing)  missing.textContent  = 'â€”';
+        if (detected) detected.textContent = '-';
+        if (missing)  missing.textContent  = '-';
         // Update the stat labels to be more informative
         var detectedLabel = document.querySelector('.stat-detected .stat-label');
         var missingLabel  = document.querySelector('.stat-missing .stat-label');
@@ -370,8 +370,8 @@ function showAnalysisScreen() {
         var missingBadge  = document.querySelector('.stat-missing .stat-badge');
         if (detectedLabel) detectedLabel.textContent = 'Fields';
         if (missingLabel)  missingLabel.textContent  = 'AI Assist';
-        if (detected) detected.textContent = 'âœ“';
-        if (missing)  missing.textContent  = 'âœ“';
+        if (detected) detected.textContent = 'v';
+        if (missing)  missing.textContent  = 'v';
         if (detectedBadge) { detectedBadge.textContent = 'Auto-Detect'; detectedBadge.className = 'stat-badge stat-badge-green'; }
         if (missingBadge)  { missingBadge.textContent  = 'Enabled';     missingBadge.className  = 'stat-badge stat-badge-green'; }
     } else {
@@ -534,7 +534,7 @@ function showSuccessScreen() {
     }
 
 
-    // Phase 2: Post-fill verification — async, non-blocking
+    // Phase 2: Post-fill verification -- async, non-blocking
     try {
         chrome.tabs.query({ active:true, currentWindow:true }, function(tabs) {
             if (!tabs || !tabs[0]) return;
@@ -602,7 +602,7 @@ function loadRecentActivity() {
                 '</div>' +
                 '<div class="activity-info">' +
                     '<div class="activity-site">' + (item.site||'Unknown site') + '</div>' +
-                    '<div class="activity-time">' + item.filled + ' fields Â· ' + timeStr + '</div>' +
+                    '<div class="activity-time">' + item.filled + ' fields | ' + timeStr + '</div>' +
                 '</div>' +
                 '</div>';
         }).join('');
@@ -631,7 +631,7 @@ function loadHistoryScreen() {
                     '<div class="history-site">' + (item.site||'Unknown') + '</div>' +
                     '<div class="history-meta">' +
                         '<span>' + item.filled + ' fields filled</span>' +
-                        '<span>Â·</span>' +
+                        '<span>-</span>' +
                         '<span>' + dateStr + '</span>' +
                         '<span class="' + badgeClass + '">' + badgeText + '</span>' +
                     '</div>' +
@@ -945,14 +945,14 @@ function showReviewScreen() {
                 var conf       = Math.round((d.confidence || 0) * 100);
                 var confClass  = conf >= 85 ? '' : conf >= 65 ? 'warn' : 'low';
                 var value      = (d.value || '').substring(0, 25);
-                var statusIcon = d.value ? '✓' : '—';
+                var statusIcon = d.value ? '✓' : '--';
                 var statusSty  = d.value ? 'color:var(--success)' : 'color:var(--text-tertiary)';
                 var src        = d.source || 'Resume';
                 return '<div class="review-row">' +
                     '<div class="review-field" title="'+d.label+'">' + (d.label||'').substring(0,28) + '</div>' +
                     '<div class="review-source">' + src + '</div>' +
-                    '<div class="review-conf '+confClass+'">' + (conf>0?conf+'%':'—') + '</div>' +
-                    '<div class="review-value" title="'+(d.value||'')+'">'+( value || '—' )+'</div>' +
+                    '<div class="review-conf '+confClass+'">' + (conf>0?conf+'%':'--') + '</div>' +
+                    '<div class="review-value" title="'+(d.value||'')+'">'+( value || '--' )+'</div>' +
                     '<div class="review-status" style="'+statusSty+'">'+statusIcon+'</div>' +
                     '</div>';
             });
@@ -962,15 +962,15 @@ function showReviewScreen() {
                 var label = m.label || m.field_name || m.resumeField || 'Field';
                 var val   = String(m.value || m.mapped_value || '').trim();
                 var conf  = Math.round((m.confidence || 0) * 100);
-                var src   = AI_P.test(label) ? 'AI' : (m.source || (val ? 'Resume' : '—'));
+                var src   = AI_P.test(label) ? 'AI' : (m.source || (val ? 'Resume' : '--'));
                 var cc    = conf >= 85 ? '' : conf >= 65 ? 'warn' : 'low';
                 var sty   = val ? 'color:var(--success)' : 'color:var(--text-tertiary)';
                 return '<div class="review-row">' +
                     '<div class="review-field" title="'+label+'">'+label.substring(0,28)+'</div>' +
                     '<div class="review-source">'+src+'</div>' +
-                    '<div class="review-conf '+cc+'">'+(conf>0?conf+'%':'—')+'</div>' +
-                    '<div class="review-value" title="'+val+'">'+(val?val.substring(0,25):'—')+'</div>' +
-                    '<div class="review-status" style="'+sty+'">'+(val?'✓':'—')+'</div>' +
+                    '<div class="review-conf '+cc+'">'+(conf>0?conf+'%':'--')+'</div>' +
+                    '<div class="review-value" title="'+val+'">'+(val?val.substring(0,25):'--')+'</div>' +
+                    '<div class="review-status" style="'+sty+'">'+(val?'✓':'--')+'</div>' +
                     '</div>';
             });
         }

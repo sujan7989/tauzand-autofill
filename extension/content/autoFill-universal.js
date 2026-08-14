@@ -229,16 +229,27 @@ function getLabel(el) {
         }
     }
     // Also check: label that immediately precedes input's parent
+    // Only use for non-checkbox/radio — for checkboxes, distant labels are unreliable
     if (!t && el.parentElement) {
-        var prev = el.parentElement.previousElementSibling;
-        if (prev) {
-            var ptxt = (prev.innerText||prev.textContent||'').trim().replace(/\s+/g,' ');
-            if (ptxt.length > 1 && ptxt.length < 80) t = ptxt;
+        var type7 = (el.type||'').toLowerCase();
+        if (type7 !== 'checkbox' && type7 !== 'radio') {
+            var prev = el.parentElement.previousElementSibling;
+            if (prev) {
+                var ptxt = (prev.innerText||prev.textContent||'').trim().replace(/\s+/g,' ');
+                if (ptxt.length > 1 && ptxt.length < 80) t = ptxt;
+            }
         }
     }
 
     // 7. Last resort: use name attribute (may be UUID/garbage for dynamic fields)
     if (!t) t = el.name ? el.name.replace(/[-_.]/g,' ').replace(/([a-z])([A-Z])/g,'$1 $2') : '';
+
+    // Final: if label looks like a different field name (e.g. checkbox got "First Name"), clear it
+    // so name-based resolveValue handles it instead
+    var type8 = (el.type||'').toLowerCase();
+    if (type8 === 'checkbox' && t && /^(first name|last name|email|phone|mobile)$/i.test(t.trim())) {
+        t = ''; // will fall through to name-based match
+    }
 
     return t.trim().replace(/[*:]+$/, '').replace(/^\s*[*:]+/, '').trim();
 }
@@ -569,7 +580,7 @@ async function resolveValue(label, inputType, inputName, inputId, profile) {
         // will try includes-match. If still no match, return state then country.
         return city || pstate || country;
     }
-    if (nm==='standardfields.currentlocation.answer'||id==='currentlocation') return city;
+    if (nm==='standardfields.currentlocation.answer'||nm==='standardfields.currentlocation'||id==='currentlocation') return city;
     if (id==='skills') return skills.slice(0,6).join(', ');
     if (nm==='candidateconsent'||id==='candidateconsent') return 'true';
     // Keka notice period radio: "Immediate Joiner" option
