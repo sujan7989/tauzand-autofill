@@ -36,21 +36,22 @@ def run():
             print(f"  Upload error: {e}")
 
     if not profile:
+        # Use placeholder profile for testing — replace with your own details
         profile = {
-            'name': 'Akkisetty Sujan Kumar Reddy',
-            'first_name': 'Akkisetty', 'last_name': 'Sujan Kumar Reddy',
-            'email': 'sujankumarreddy824@gmail.com', 'phone': '+917989168768',
-            'personal': {'full_name': 'Akkisetty Sujan Kumar Reddy',
-                         'first_name': 'Akkisetty', 'last_name': 'Sujan Kumar Reddy'},
-            'contact': {'email': 'sujankumarreddy824@gmail.com',
-                        'phone': '+917989168768', 'city': 'Kurnool, Andhra'},
-            'social': {'linkedin': 'https://www.linkedin.com/in/akkisetty-sujan-kumar-reddy-bb2744268/',
-                       'github': 'https://github.com/sujan7989',
-                       'portfolio': 'https://roaring-marzipan-d97e67.netlify.app/'},
+            'name': 'Test User',
+            'first_name': 'Test', 'last_name': 'User',
+            'email': 'test.user@example.com', 'phone': '+911234567890',
+            'personal': {'full_name': 'Test User',
+                         'first_name': 'Test', 'last_name': 'User'},
+            'contact': {'email': 'test.user@example.com',
+                        'phone': '+911234567890', 'city': 'Hyderabad, Telangana'},
+            'social': {'linkedin': 'https://www.linkedin.com/in/your-profile/',
+                       'github': 'https://github.com/your-username',
+                       'portfolio': ''},
             'skills': ['Python', 'Java', 'JavaScript', 'React', 'Flask'],
             'years_experience': 'Fresher',
         }
-        print("  Using hardcoded profile")
+        print("  Using placeholder profile (upload a real resume for accurate testing)")
 
     # Step 2: Get mappings
     print("\nStep 2: Getting field mappings...")

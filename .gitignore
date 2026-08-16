@@ -28,3 +28,33 @@ server.err
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Temp / debug files
+*.tmp
+*.bak
+*.old
+*.backup
+audit_deep.py
+fix_*.py
+check_*.py
+write_*.py
+dep_check.py
+
+# Node
+node_modules/
+
+# Large binary files that should not be in repo
+*.docx
+*.pdf
+*.png
+tests/*.png
+
+# Railway (using Render instead)
+railway.json
